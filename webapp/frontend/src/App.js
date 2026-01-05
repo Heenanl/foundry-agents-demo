@@ -1,41 +1,20 @@
-// Import React and hooks
 import React, { useState, useEffect } from 'react';
-// Import our styling file that makes things look pretty
 import './App.css';
 
-// Backend API URL
 const API_URL = 'http://localhost:8000';
 
-// Soft colors for participants (pastel palette)
 const PARTICIPANT_COLORS = [
   '#FFB6C1', '#FFD4B2', '#FFF4B2', '#BAE4FF', '#BAFFC9',
   '#D4BAFF', '#FFB3E6', '#B3E5FC', '#C5E1A5', '#F8BBD0',
   '#FFCCBC', '#D1C4E9', '#B2DFDB', '#FFF9C4', '#F0F4C3'
 ];
 
-// This is our main App component - think of it as the whole chat application
 function App() {
-  // useState is a "hook" that creates a variable that React watches
-  // messages: an array (list) that holds all our chat messages
-  // setMessages: a function we call to update the messages array
-  // useState([]) means we start with an empty array
   const [messages, setMessages] = useState([]);
-  
-  // inputText: holds whatever the user is currently typing
-  // setInputText: function to update what the user is typing
-  // useState('') means we start with an empty string (no text)
   const [inputText, setInputText] = useState('');
-  
-  // Participants from backend (not stored locally)
   const [backendParticipants, setBackendParticipants] = useState([]);
-  
-  // Selected participant: the one currently "speaking" in the chat
   const [selectedParticipant, setSelectedParticipant] = useState(null);
-  
-  // Counter for generating unique participant IDs
   const [participantCounter, setParticipantCounter] = useState(1);
-  
-  // Session initialization state
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -225,12 +204,9 @@ function App() {
     setSelectedParticipant(participant);
   };
 
-  // This function runs when the user clicks "Send" or presses Enter
   const handleSend = async () => {
-    // Check if the input is empty or just spaces - if so, don't do anything
     if (inputText.trim() === '') return;
     
-    // Check if a participant is selected
     if (!selectedParticipant) {
       alert('Please select a participant first!');
       return;
@@ -241,24 +217,20 @@ function App() {
       return;
     }
     
-    // Create a new message object with the text the user typed
     const userMessage = {
-      text: inputText,        // The actual message text
-      sender: 'participant',  // Mark this as coming from a participant
-      participant: selectedParticipant, // Store participant info
-      timestamp: new Date()   // Save when this message was sent
+      text: inputText,
+      sender: 'participant',
+      participant: selectedParticipant,
+      timestamp: new Date()
     };
     
-    // Add the user's message to our messages array immediately
     setMessages([...messages, userMessage]);
     
-    // Clear the input box so the user can type a new message
     const messageToSend = inputText;
     setInputText('');
     setIsLoading(true);
     
     try {
-      // Send message to backend
       const response = await fetch(`${API_URL}/api/messages/send`, {
         method: 'POST',
         headers: {
@@ -273,14 +245,12 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         
-        // Create the bot's response message
         const botMessage = {
           text: data.message,
           sender: 'bot',
           timestamp: new Date()
         };
         
-        // Add the bot's message to our messages array
         setMessages(prevMessages => [...prevMessages, botMessage]);
       } else {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
@@ -295,15 +265,11 @@ function App() {
     }
   };
 
-  // This function runs every time the user types in the input box
   const handleInputChange = (e) => {
-    // e.target.value is the current text in the input box
     setInputText(e.target.value);
   };
 
-  // This function runs when the user presses a key in the input box
   const handleKeyPress = (e) => {
-    // If the user pressed Enter (key code 'Enter'), send the message
     if (e.key === 'Enter') {
       handleSend();
     }

@@ -24,19 +24,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for React frontend (runs on different port)
-#lets the React app (running on port 3000) talk to the API (running on port 8000)
+# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global session storage (in production, use Redis or database)
+# Global session storage
 chat_session: Optional[AgentSession] = None
-participants_dict = {}  # Store participants by ID
+participants_dict = {}
 
 
 # Request/Response Models
@@ -207,10 +206,6 @@ async def send_message(request: SendMessageRequest):
     """Send a message from a participant and get agent response"""
     global chat_session, participants_dict
     
-    print(f"[DEBUG] Received message request: participant_id={request.participant_id}, message={request.message}")
-    print(f"[DEBUG] Session initialized: {chat_session.is_initialized if chat_session else 'No session'}")
-    print(f"[DEBUG] Participants in dict: {list(participants_dict.keys())}")
-    
     if not chat_session or not chat_session.is_initialized:
         raise HTTPException(status_code=400, detail="Session not initialized")
     
@@ -219,16 +214,7 @@ async def send_message(request: SendMessageRequest):
     
     try:
         participant = participants_dict[request.participant_id]
-        print(f"[DEBUG] Found participant: {participant.name}")
-        
-        # Send message through participant (uses agent's thread)
-        print(f"[DEBUG] Calling participant.send_message...")
         response = await participant.send_message(request.message, chat_session)
-        print(f"[DEBUG] Got response type: {type(response)}")
-        
-        
-        
-        print(f"[DEBUG] Extracted response text: {response.text}")
         
         return MessageResponse(
             participant_id=participant.id,
@@ -237,9 +223,6 @@ async def send_message(request: SendMessageRequest):
             sender="bot"
         )
     except Exception as e:
-        print(f"[ERROR] Exception in send_message: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 
@@ -315,10 +298,6 @@ async def get_message_history():
         
         return conversation_history
     except Exception as e:
-        print(f"[ERROR] Failed to get message history: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        # Return empty list instead of failing
         return []
 
 
