@@ -1,0 +1,13 @@
+/* This resets default browser styles to give us a clean slate */
+/* Apply these styles to every element on the page */
+* {
+  box-sizing: border-box;  /* Makes width/height calculations include padding and border */
+}
+
+/* Style the body (the entire page) */
+body {
+  margin: 0;               /* Remove default margin around the page */
+  padding: 0;              /* Remove default padding */
+  font-family: Arial, sans-serif; /* Use a clean, simple font */
+  overflow: hidden;        /* Prevent scrolling on the body */
+}

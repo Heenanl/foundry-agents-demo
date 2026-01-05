@@ -1,0 +1,271 @@
+/* Container that holds both the chat and placeholder sections */
+.container {
+  display: flex;              /* Use flexbox to position sections side by side */
+  height: 100vh;              /* Take up full viewport height */
+  width: 100vw;               /* Take up full viewport width */
+}
+
+/* This section styles the chat app container on the left */
+.App {
+  display: flex;              /* Use flexbox layout for easy positioning */
+  flex-direction: column;     /* Stack items vertically (header, chat, input) */
+  height: 100vh;              /* Make it take up the full viewport height (100% of screen) */
+  width: 33.33%;              /* Take up one third (33.33%) of the screen width */
+  max-width: 500px;           /* Don't get wider than 500 pixels */
+  min-width: 350px;           /* Don't get narrower than 350 pixels */
+  background: linear-gradient(
+    180deg,
+    rgba(255, 218, 185, 0.15) 0%,   /* Soft peach */
+    rgba(255, 182, 193, 0.15) 25%,  /* Soft pink */
+    rgba(203, 195, 227, 0.15) 50%,  /* Soft lavender */
+    rgba(186, 225, 255, 0.15) 75%,  /* Soft light blue */
+    rgba(186, 255, 201, 0.15) 100%  /* Soft green */
+  );                          /* Vertical gradient with soft rainbow colors */
+  font-family: Arial, sans-serif; /* Use a clean, simple font */
+  box-shadow: 2px 0 10px rgba(0,0,0,0.1); /* Add shadow on right side for depth */
+  position: relative;         /* Position relative for z-index stacking */
+  z-index: 2;                 /* Keep chat above the gradient */
+}
+
+/* This styles the header bar at the top */
+.header {
+  display: flex;              /* Use flexbox to position items horizontally */
+  justify-content: space-between; /* Push title left, logo right */
+  align-items: center;        /* Vertically center items */
+  padding: 15px 20px;         /* Add space inside: 15px top/bottom, 20px left/right */
+  background: linear-gradient(
+    90deg,
+    rgba(255, 182, 193, 0.8) 0%,   /* Soft pink */
+    rgba(203, 195, 227, 0.8) 50%,  /* Soft lavender */
+    rgba(186, 225, 255, 0.8) 100%  /* Soft light blue */
+  );                          /* Horizontal rainbow gradient */
+  color: white;               /* White text color */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Subtle shadow for depth */
+  backdrop-filter: blur(5px); /* Slight blur effect */
+}
+
+/* Style the "Echo Chat" title */
+.header h1 {
+  margin: 0;                  /* Remove default margin */
+  font-size: 22px;            /* Set text size */
+  font-weight: 600;           /* Semi-bold */
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.1); /* Subtle text shadow */
+}
+
+/* Style the Geekster logo */
+.logo {
+  height: 50px;               /* Set logo height to 50 pixels (bigger) */
+  width: auto;                /* Width adjusts automatically to maintain proportions */
+  background-color: white;    /* Add white background behind logo */
+  padding: 6px 14px;          /* Add padding around logo */
+  border-radius: 8px;         /* Round the corners */
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15); /* Shadow for depth */
+}
+
+/* This is the main chat area where messages appear */
+.chat-container {
+  flex: 1;                    /* Take up all available space between header and input */
+  overflow-y: auto;           /* Enable scrolling if messages overflow */
+  padding: 20px;              /* Add space around messages */
+  display: flex;              /* Use flexbox */
+  flex-direction: column;     /* Stack messages vertically */
+  gap: 10px;                  /* Add 10px space between each message */
+  background: rgba(255, 255, 255, 0.3); /* Semi-transparent white overlay */
+}
+
+/* Base styles for all messages (both user and bot) */
+.message {
+  display: flex;              /* Use flexbox to position avatar and text side by side */
+  align-items: flex-end;      /* Align items to the bottom */
+  gap: 10px;                  /* Add 10px space between avatar and message bubble */
+  max-width: 80%;             /* Messages take up at most 80% of screen width */
+}
+
+/* Style the avatar images */
+.avatar {
+  width: 35px;                /* Set avatar width to 35 pixels */
+  height: 35px;               /* Set avatar height to 35 pixels */
+  border-radius: 50%;         /* Make it circular (50% rounds all corners fully) */
+  object-fit: cover;          /* Crop image to fit the circle nicely */
+  flex-shrink: 0;             /* Don't let the avatar shrink */
+  background-color: white;    /* White background behind the avatar */
+  padding: 3px;               /* Small padding around the avatar */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Shadow for depth */
+}
+
+/* Container for the actual message text */
+.message-text {
+  padding: 12px 16px;         /* Add space inside message bubble */
+  border-radius: 18px;        /* Round the corners for bubble effect */
+  word-wrap: break-word;      /* Break long words to prevent overflow */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* Subtle shadow */
+}
+
+/* Specific styles for user messages (align right, blue) */
+.message.user {
+  align-self: flex-end;       /* Push to the right side */
+  flex-direction: row-reverse; /* Put avatar on the right side of text */
+}
+
+/* Style user message text bubble */
+.message.user .message-text {
+  background-color: rgba(203, 195, 227, 0.9); /* Solid soft lavender */
+  color: white;               /* White text */
+}
+
+/* Specific styles for bot messages (align left, gray) */
+.message.bot {
+  align-self: flex-start;     /* Push to the left side */
+}
+
+/* Style bot message text bubble */
+.message.bot .message-text {
+  background-color: rgba(255, 182, 193, 0.9); /* Solid soft pink */
+  color: white;               /* White text */
+}
+
+/* Style the actual text inside message bubbles */
+.message-text {
+  margin: 0;                  /* Remove default margin */
+  font-size: 16px;            /* Set text size */
+}
+
+/* This styles the bottom section with input and send button */
+.input-container {
+  display: flex;              /* Use flexbox to position items horizontally */
+  padding: 15px;              /* Add space around the container */
+  background: rgba(255, 255, 255, 0.9); /* Semi-transparent white */
+  border-top: 1px solid rgba(203, 195, 227, 0.3); /* Soft lavender border */
+  gap: 10px;                  /* Add 10px space between input and button */
+  backdrop-filter: blur(10px); /* Blur effect */
+}
+
+/* Style the text input box */
+.input-box {
+  flex: 1;                    /* Take up all available horizontal space */
+  padding: 12px 16px;         /* Add space inside the input box */
+  border: 1px solid #ddd;     /* Light gray border */
+  border-radius: 25px;        /* Round the corners a lot for pill shape */
+  font-size: 16px;            /* Set text size */
+  outline: none;              /* Remove default blue outline */
+}
+
+/* Change border color when user clicks on input box */
+.input-box:focus {
+  border-color: rgba(203, 195, 227, 0.8); /* Soft lavender border when focused */
+}
+
+/* Style the Upload button (paperclip icon) */
+.upload-button {
+  padding: 12px 16px;         /* Add space inside button */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 182, 193, 0.8) 0%,   /* Soft pink */
+    rgba(255, 218, 185, 0.8) 100%  /* Soft peach */
+  );                          /* Gradient background */
+  color: white;               /* White text */
+  border: none;               /* Remove default border */
+  border-radius: 25px;        /* Round the corners for pill shape */
+  font-size: 20px;            /* Set icon size */
+  cursor: pointer;            /* Show hand cursor when hovering */
+  transition: all 0.2s;       /* Smooth transitions */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Subtle shadow */
+}
+
+/* Change upload button color when hovering over it */
+.upload-button:hover {
+  transform: scale(1.05);     /* Slightly enlarge on hover */
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15); /* Bigger shadow */
+}
+
+/* Style the Send button */
+.send-button {
+  padding: 12px 30px;         /* Add space inside button */
+  background: linear-gradient(
+    135deg,
+    rgba(186, 225, 255, 0.8) 0%,   /* Soft light blue */
+    rgba(203, 195, 227, 0.8) 100%  /* Soft lavender */
+  );                          /* Gradient background */
+  color: white;               /* White text */
+  border: none;               /* Remove default border */
+  border-radius: 25px;        /* Round the corners for pill shape */
+  font-size: 16px;            /* Set text size */
+  cursor: pointer;            /* Show hand cursor when hovering */
+  font-weight: bold;          /* Make text bold */
+  transition: all 0.2s;       /* Smooth transitions */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Subtle shadow */
+}
+
+/* Change button color when hovering over it */
+.send-button:hover {
+  transform: scale(1.05);     /* Slightly enlarge on hover */
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15); /* Bigger shadow */
+}
+
+/* Change button when clicking it */
+.send-button:active {
+  transform: scale(0.98);     /* Slightly shrink when clicked */
+}
+
+/* Placeholder section on the right side with rainbow gradient */
+.placeholder-section {
+  flex: 1;                    /* Take up all remaining horizontal space */
+  height: 100vh;              /* Full viewport height */
+  background: linear-gradient(
+    135deg, 
+    rgba(255, 182, 193, 0.3) 0%,    /* Soft pink */
+    rgba(255, 218, 185, 0.3) 15%,   /* Soft peach */
+    rgba(255, 255, 186, 0.3) 30%,   /* Soft yellow */
+    rgba(186, 255, 201, 0.3) 45%,   /* Soft green */
+    rgba(186, 225, 255, 0.3) 60%,   /* Soft light blue */
+    rgba(203, 195, 227, 0.3) 75%,   /* Soft lavender */
+    rgba(255, 182, 193, 0.3) 90%,   /* Soft pink again */
+    rgba(255, 218, 185, 0.3) 100%   /* Soft peach */
+  );                          /* Diagonal gradient with soft rainbow colors */
+  background-size: 400% 400%; /* Make background larger for animation */
+  animation: rainbow-shift 15s ease infinite; /* Animate the gradient */
+  display: flex;              /* Use flexbox for centering content */
+  align-items: center;        /* Center vertically */
+  justify-content: center;    /* Center horizontally */
+  position: relative;         /* Position for overlay effects */
+  overflow: hidden;           /* Hide any overflow */
+}
+
+/* Animation to make the rainbow gradient move slowly */
+@keyframes rainbow-shift {
+  0% {
+    background-position: 0% 50%;   /* Start position */
+  }
+  50% {
+    background-position: 100% 50%; /* Move across */
+  }
+  100% {
+    background-position: 0% 50%;   /* Return to start */
+  }
+}
+
+/* Content inside the placeholder section */
+.placeholder-content {
+  text-align: center;         /* Center align text */
+  color: #666;                /* Medium gray text */
+  padding: 40px;              /* Add space around content */
+  background: rgba(255, 255, 255, 0.7); /* Semi-transparent white background */
+  border-radius: 20px;        /* Round the corners */
+  backdrop-filter: blur(10px); /* Blur the background behind */
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1); /* Soft shadow */
+}
+
+/* Style the heading in placeholder */
+.placeholder-content h2 {
+  margin: 0 0 15px 0;         /* Remove top margin, add bottom margin */
+  font-size: 32px;            /* Large text */
+  color: #444;                /* Dark gray */
+  font-weight: 600;           /* Semi-bold */
+}
+
+/* Style the paragraph in placeholder */
+.placeholder-content p {
+  margin: 0;                  /* Remove default margin */
+  font-size: 18px;            /* Medium text size */
+  color: #777;                /* Light gray */
+}

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: andreea-foundry
+metadata:
+  template: andreea-foundry@0.0.1-beta
+
+infra:
+  provider: bicep
+  path: .
+  module: main
+  parameters: main.bicepparam
+  # azd will set AZURE_ENV_NAME and AZURE_LOCATION in .azure/<env-name>/.env
+  # main.bicepparam reads these values with readEnvironmentVariable()
+
+# You can add services here if you have application code to deploy
+# services: {}
