@@ -1,0 +1,7 @@
+fastapi==0.115.0
+uvicorn==0.32.1
+pydantic==2.10.3
+python-dotenv==1.2.1
+azure-identity==1.26.0b1
+agent-framework
+agent-framework-azure-ai

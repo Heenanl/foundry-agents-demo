@@ -73,12 +73,27 @@
   background: rgba(255, 255, 255, 0.3); /* Semi-transparent white overlay */
 }
 
-/* Base styles for all messages (both user and bot) */
+/* Base styles for all messages (both participant and bot) */
 .message {
   display: flex;              /* Use flexbox to position avatar and text side by side */
   align-items: flex-end;      /* Align items to the bottom */
   gap: 10px;                  /* Add 10px space between avatar and message bubble */
   max-width: 80%;             /* Messages take up at most 80% of screen width */
+}
+
+/* Container for message text and participant name */
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Participant name above message */
+.participant-name {
+  font-size: 12px;
+  font-weight: 600;
+  padding-left: 8px;
+  opacity: 0.8;
 }
 
 /* Style the avatar images */
@@ -93,6 +108,18 @@
   box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Shadow for depth */
 }
 
+/* Participant avatar (circular with initial) */
+.participant-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 16px;
+  color: white;
+  padding: 0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
 /* Container for the actual message text */
 .message-text {
   padding: 12px 16px;         /* Add space inside message bubble */
@@ -101,16 +128,21 @@
   box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* Subtle shadow */
 }
 
-/* Specific styles for user messages (align right, blue) */
-.message.user {
+/* Specific styles for participant messages (align right) */
+.message.participant {
   align-self: flex-end;       /* Push to the right side */
   flex-direction: row-reverse; /* Put avatar on the right side of text */
 }
 
-/* Style user message text bubble */
-.message.user .message-text {
-  background-color: rgba(203, 195, 227, 0.9); /* Solid soft lavender */
+/* Style participant message text bubble */
+.message.participant .message-text {
   color: white;               /* White text */
+}
+
+.message.participant .participant-name {
+  text-align: right;
+  padding-right: 8px;
+  padding-left: 0;
 }
 
 /* Specific styles for bot messages (align left, gray) */
@@ -205,6 +237,339 @@
 /* Change button when clicking it */
 .send-button:active {
   transform: scale(0.98);     /* Slightly shrink when clicked */
+}
+
+/* Participant section on the right side */
+.participant-section {
+  flex: 1;                    /* Take up all remaining horizontal space */
+  height: 100vh;              /* Full viewport height */
+  background: linear-gradient(
+    135deg, 
+    rgba(255, 182, 193, 0.3) 0%,    /* Soft pink */
+    rgba(255, 218, 185, 0.3) 15%,   /* Soft peach */
+    rgba(255, 255, 186, 0.3) 30%,   /* Soft yellow */
+    rgba(186, 255, 201, 0.3) 45%,   /* Soft green */
+    rgba(186, 225, 255, 0.3) 60%,   /* Soft light blue */
+    rgba(203, 195, 227, 0.3) 75%,   /* Soft lavender */
+    rgba(255, 182, 193, 0.3) 90%,   /* Soft pink again */
+    rgba(255, 218, 185, 0.3) 100%   /* Soft peach */
+  );                          /* Diagonal gradient with soft rainbow colors */
+  background-size: 400% 400%; /* Make background larger for animation */
+  animation: rainbow-shift 15s ease infinite; /* Animate the gradient */
+  display: flex;              /* Use flexbox for layout */
+  flex-direction: column;     /* Stack items vertically */
+  overflow-y: auto;           /* Enable scrolling */
+  padding: 20px;
+}
+
+/* Participant section header */
+.participant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.participant-header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: #444;
+  font-weight: 600;
+}
+
+/* Add participant button */
+.add-participant-button {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #BAE4FF 0%, #CBB3E7 100%);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.add-participant-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Honeycomb container */
+.honeycomb-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  margin-bottom: 20px;
+  min-height: 300px;
+}
+
+/* No participants message */
+.no-participants {
+  text-align: center;
+  color: #888;
+}
+
+.no-participants p {
+  margin: 10px 0;
+  font-size: 18px;
+}
+
+.no-participants .hint {
+  font-size: 14px;
+  color: #aaa;
+}
+
+/* Honeycomb layout */
+.honeycomb {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  max-width: 600px;
+}
+
+/* Hexagon shape */
+.hexagon {
+  width: 100px;
+  height: 115px;
+  position: relative;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: hexagon-appear 0.5s ease-out;
+}
+
+@keyframes hexagon-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.5) rotate(180deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.hexagon:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+  filter: brightness(1.1);
+}
+
+.hexagon.selected {
+  box-shadow: 0 0 0 4px white, 0 0 20px rgba(0,0,0,0.3);
+  transform: scale(1.15);
+  z-index: 10;
+}
+
+/* Hexagon content */
+.hexagon-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.participant-initial {
+  font-size: 32px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.participant-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Selected participant indicator */
+.selected-indicator {
+  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.indicator-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.indicator-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 15px;
+  border-radius: 25px;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.indicator-initial {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.indicator-name {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* Modal overlay for participant form */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(5px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Modal content */
+.modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  min-width: 400px;
+  max-width: 500px;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-content h3 {
+  margin: 0 0 20px 0;
+  font-size: 24px;
+  color: #333;
+  font-weight: 600;
+}
+
+/* Form group */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #555;
+  font-size: 14px;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: all 0.3s;
+  box-sizing: border-box;
+}
+
+.form-input:focus,
+.form-select:focus {
+  outline: none;
+  border-color: #BAE4FF;
+  box-shadow: 0 0 0 3px rgba(186, 228, 255, 0.2);
+}
+
+/* Form buttons */
+.form-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 25px;
+}
+
+.cancel-button,
+.submit-button {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.cancel-button {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.cancel-button:hover {
+  background: #e0e0e0;
+}
+
+.submit-button {
+  background: linear-gradient(135deg, #BAE4FF 0%, #CBB3E7 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.submit-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
 /* Placeholder section on the right side with rainbow gradient */
