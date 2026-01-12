@@ -17,6 +17,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 from agent_session import AgentSession, Participant
 
+# Import form checker router
+from form_checker_api import router as form_checker_router
+
 # Initialize FastAPI app
 app = FastAPI(
     title="MCAPS Tech Connect 2026 API",
@@ -32,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(form_checker_router)
 
 # Global session storage
 chat_session: Optional[AgentSession] = None

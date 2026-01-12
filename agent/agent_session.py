@@ -14,7 +14,7 @@ For beginners:
 import os
 from pathlib import Path
 from typing import Optional
-from agent_framework import AgentThread, ChatAgent
+from agent_framework import AgentThread, ChatAgent, HostedWebSearchTool
 from agent_framework.azure import AzureAIAgentClient
 from azure.identity import AzureCliCredential
 from dotenv import load_dotenv
@@ -102,9 +102,10 @@ class AgentSession:
             Take into account who you are replying to (see as <name>: <message>). There sometimes MAY be multiple participants.
             Do not make up participant names or identities.
             You don't have to call the participant by their name every time. Use it only when it makes sense in the conversation. 
-            """
-
+            """,
+            tools=[HostedWebSearchTool()],
         )
+        
         #validate agent
         print("AGENT NAME")
         print(self.agent.name)
