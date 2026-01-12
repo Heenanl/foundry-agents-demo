@@ -42,12 +42,13 @@ class AgentSession:
         await session.close()
     """
     
-    def __init__(self, session_id: Optional[str] = None):
+    def __init__(self, session_id: Optional[str] = None, instructions: Optional[str] = None):
         """
         Initialize the agent session manager.
         
         Args:
             session_id: Optional identifier for this session (useful for logging)
+            instructions: Optional custom instructions for the agent
         """
         self.session_id = session_id or "default"
         self.agent: Optional[ChatAgent] = None
@@ -55,6 +56,7 @@ class AgentSession:
         self.is_initialized = False
         # array of Participants
         self.participants = []
+        self.custom_instructions = instructions
         
         # Load environment variables
         env_path = Path(__file__).parent.parent / '.env'
@@ -89,11 +91,12 @@ class AgentSession:
             credential=credential
         )
         
-        # Create the agent (this is created ONCE and reused)
-        self.agent = ChatAgent(
-            chat_client=chat_client,
-            name="AndreeaSessionAgent",
-            instructions="""
+        # Determine which instructions to use
+        if self.custom_instructions:
+            agent_instructions = self.custom_instructions
+        else:
+            # Default chat instructions
+            agent_instructions = """
             You are a friendly and helpful assistant. You don't always have to be the nicest :) 
             Keep your responses clear and concise. 
             Don't add weird formatting. Just normal text. 
@@ -102,7 +105,13 @@ class AgentSession:
             Take into account who you are replying to (see as <name>: <message>). There sometimes MAY be multiple participants.
             Do not make up participant names or identities.
             You don't have to call the participant by their name every time. Use it only when it makes sense in the conversation. 
-            """,
+            """
+        
+        # Create the agent (this is created ONCE and reused)
+        self.agent = ChatAgent(
+            chat_client=chat_client,
+            name="AndreeaSessionAgent",
+            instructions=agent_instructions,
             tools=[HostedWebSearchTool()],
         )
         
@@ -185,7 +194,13 @@ class Participant:
         # Send to the agent using the thread for conversation history
         response = await chat_session.agent.run(user_message, thread=chat_session.thread, user_id=self.id)
         
-        return response
+        # Extract the text content from the response
+        if hasattr(response, 'text'):
+            return response.text
+        elif hasattr(response, 'content'):
+            return response.content
+        else:
+            return str(response)
 
 # Example usage for testing
 async def main():
@@ -207,18 +222,22 @@ async def main():
     participant_alice = Participant(participant_id="ID_001", name="Alice", type="user")
     participant_bob = Participant(participant_id="ID_002", name="Bob", type="user")
     
-    response1 = await participant_alice.send_message("Hello! My name is Alice. I want a pizza", session)
-    print("Hello! My name is Alice. I want a pizza")
-    print(f"Agent: {response1}")
-    response2 = await participant_bob.send_message("I'm Bob", session)
-    print("I'm Bob")
-    print(f"Agent: {response2}")
-    response3 = await participant_alice.send_message("I like Margherita pizza", session)
-    print("I like Margherita pizza")
-    print(f"Agent: {response3}")
-    response4 = await participant_bob.send_message("What pizza is Alice having? I want the same!", session)
-    print("What pizza is Alice having? I want the same!")
-    print(f"Agent: {response4}")
+    # response1 = await participant_alice.send_message("Hello! My name is Alice. I want a pizza", session)
+    # print("Hello! My name is Alice. I want a pizza")
+    # print(f"Agent: {response1}")
+    # response2 = await participant_bob.send_message("I'm Bob", session)
+    # print("I'm Bob")
+    # print(f"Agent: {response2}")
+    # response3 = await participant_alice.send_message("I like Margherita pizza", session)
+    # print("I like Margherita pizza")
+    # print(f"Agent: {response3}")
+    # response4 = await participant_bob.send_message("What pizza is Alice having? I want the same!", session)
+    # print("What pizza is Alice having? I want the same!")
+    # print(f"Agent: {response4}")
+
+    response5 = await participant_bob.send_message("what's the weather now in Seattle?", session)
+    print("What's the weather now in Seattle?")
+    print(f"Agent: {response5}")
 
     if False:
         # Send multiple messages to the SAME agent

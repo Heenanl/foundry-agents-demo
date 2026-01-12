@@ -181,7 +181,7 @@ function FormChecker() {
                   className="validate-button"
                   disabled={isValidating || !inputText.trim()}
                 >
-                  {isValidating ? '⏳ Validating...' : '🤖 Auto Validate'}
+                  {isValidating ? '⏳ Validating...' : '✓ Validate'}
                 </button>
                 <button onClick={handleClear} className="clear-button">
                   🗑️ Clear All
