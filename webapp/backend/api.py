@@ -221,11 +221,14 @@ async def send_message(request: SendMessageRequest):
     try:
         participant = participants_dict[request.participant_id]
         response = await participant.send_message(request.message, chat_session)
+
+        if response is None:
+            raise HTTPException(status_code=404, detail=f"Response is empty from agent")
         
         return MessageResponse(
             participant_id=participant.id,
             participant_name=participant.name,
-            message=response.text,
+            message=response,
             sender="bot"
         )
     except Exception as e:
