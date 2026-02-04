@@ -53,10 +53,10 @@ class AgentSession:
         self.session_id = session_id or "default"
         self.agent: Optional[ChatAgent] = None
         self.message_count = 0
-        self.is_initialized = False
         # array of Participants
         self.participants = []
         self.custom_instructions = instructions
+        self.thread: Optional[AgentThread] = None
         
         # Load environment variables
         env_path = Path(__file__).parent.parent / '.env'
@@ -70,10 +70,7 @@ class AgentSession:
         - You only need to call this ONCE
         - After this, you can send unlimited messages
         """
-        if self.is_initialized:
-            print(f"⚠️ Session {self.session_id} is already initialized")
-            return
-        
+
         # Get configuration
         endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
         deployment_name = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o-mini")
@@ -119,10 +116,8 @@ class AgentSession:
         print("AGENT NAME")
         print(self.agent.name)
         # Create a thread for this session to manage conversation history
-        self.thread = self.agent.get_new_thread()
+        self.thread = self.agent.get_new_thread(service_thread_id=self.session_id)
         
-        self.is_initialized = True
-        print(f"✓ Agent session {self.session_id} initialized with thread ID: {self.thread.service_thread_id}")
     
     
     async def close(self) -> None:
@@ -137,7 +132,6 @@ class AgentSession:
             await self.agent.chat_client.close()
             
         self.thread = None
-        self.is_initialized = False
         
     
     def get_stats(self) -> dict:
@@ -182,8 +176,15 @@ class Participant:
         Returns:
             The agent's response as a string
         """
-        if not chat_session.is_initialized or chat_session.agent is None or chat_session.thread is None:
-            raise RuntimeError("Session not initialized. Call initialize() first.")
+
+        if not chat_session.thread.is_initialized:
+            raise RuntimeError("Thread not initialized. Call initialize() first.")
+        
+        if chat_session.agent is None:
+            raise RuntimeError("There is no agent in this session. Call initialize() first.")
+        
+        if chat_session.thread is None:
+            raise RuntimeError("There is no thread in this session. Call initialize() first.")
         
         # Increment message counter
         chat_session.message_count += 1
@@ -218,6 +219,8 @@ async def main():
     # Create and initialize session ONCE
     session = AgentSession(session_id="example-session")
     await session.initialize()
+    print(f"✓ Agent session {session.session_id} initialized ({session.thread.is_initialized}) with thread ID: {session.thread.service_thread_id}")
+
     
     participant_alice = Participant(participant_id="ID_001", name="Alice", type="user")
     participant_bob = Participant(participant_id="ID_002", name="Bob", type="user")
