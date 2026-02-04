@@ -9,14 +9,15 @@ For beginners:
 - A "session" is like a conversation that remembers what was said
 - This class creates ONE agent and lets you send many messages to it
 - The agent remembers all previous messages in the conversation
+
+Updated to use the new Microsoft Foundry Agents API (azure.ai.projects)
 """
 
 import os
 from pathlib import Path
-from typing import Optional
-from agent_framework import AgentThread, ChatAgent, HostedWebSearchTool
-from agent_framework.azure import AzureAIAgentClient
-from azure.identity import AzureCliCredential
+from typing import Optional, Any
+from azure.ai.projects import AIProjectClient
+from azure.identity import DefaultAzureCredential, AzureCliCredential
 from dotenv import load_dotenv
 
 class AgentSession:
@@ -51,7 +52,9 @@ class AgentSession:
             instructions: Optional custom instructions for the agent
         """
         self.session_id = session_id or "default"
-        self.agent: Optional[ChatAgent] = None
+        self.project_client: Optional[AIProjectClient] = None
+        self.agent: Optional[Any] = None
+        self.conversation_id: Optional[str] = None  # Conversation ID from Responses API
         self.message_count = 0
         self.is_initialized = False
         # array of Participants
@@ -62,7 +65,7 @@ class AgentSession:
         env_path = Path(__file__).parent.parent / '.env'
         load_dotenv(env_path)
     
-    async def initialize(self) -> None:
+    def initialize(self) -> None:
         """
         Initialize the agent. Call this once before sending messages.
 
@@ -73,70 +76,53 @@ class AgentSession:
         if self.is_initialized:
             print(f"⚠️ Session {self.session_id} is already initialized")
             return
-        
+
         # Get configuration
         endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
-        deployment_name = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o-mini")
         
         if not endpoint:
             raise ValueError("AZURE_AI_PROJECT_ENDPOINT environment variable is required")
         
-        # Create Azure CLI credential for Entra ID authentication
-        credential = AzureCliCredential()
+        # Create Azure credential for authentication (try AzureCliCredential first)
+        try:
+            credential = AzureCliCredential()
+        except Exception:
+            credential = DefaultAzureCredential()
         
-        # Create chat client
-        chat_client = AzureAIAgentClient(
-            project_endpoint=endpoint,
-            model_deployment_name=deployment_name,
+        # Create project client
+        self.project_client = AIProjectClient(
+            endpoint=endpoint,
             credential=credential
         )
         
-        # Determine which instructions to use
-        if self.custom_instructions:
-            agent_instructions = self.custom_instructions
-        else:
-            # Default chat instructions
-            agent_instructions = """
-            You are a friendly and helpful assistant. You don't always have to be the nicest :) 
-            Keep your responses clear and concise. 
-            Don't add weird formatting. Just normal text. 
-            Be professional but warm in your tone (some humour SOMETIMES is also welcome - think where you see it fit and where not).
-            Remember the conversation context and refer back to it when relevant.
-            Take into account who you are replying to (see as <name>: <message>). There sometimes MAY be multiple participants.
-            Do not make up participant names or identities.
-            You don't have to call the participant by their name every time. Use it only when it makes sense in the conversation. 
-            """
+        # Get existing agent instead of creating a new one
+        agent_name = os.getenv("AZURE_AI_AGENT_NAME", "rfp-summary-agent")
+        self.agent = self.project_client.agents.get(agent_name=agent_name)
         
-        # Create the agent (this is created ONCE and reused)
-        self.agent = ChatAgent(
-            chat_client=chat_client,
-            name="AndreeaSessionAgent",
-            instructions=agent_instructions,
-            tools=[HostedWebSearchTool()],
-        )
+        print(f"✓ Using existing agent: {self.agent.name} (ID: {self.agent.id})")
         
-        #validate agent
-        print("AGENT NAME")
-        print(self.agent.name)
-        # Create a thread for this session to manage conversation history
-        self.thread = self.agent.get_new_thread()
+        # Note: v2.0.0 API uses Responses API, not threads
+        # Threads are managed automatically when using openai_client.responses.create()
         
         self.is_initialized = True
-        print(f"✓ Agent session {self.session_id} initialized with thread ID: {self.thread.service_thread_id}")
+        print(f"✓ Agent session {self.session_id} initialized")
+        
     
     
-    async def close(self) -> None:
+    def close(self) -> None:
         """
         Close the session and clean up resources.
         
         - Call this when you're done with the conversation
         - This is optional but good practice for cleanup
         """
-        if self.agent:
+        if self.project_client:
             print(f"✓ Session {self.session_id} closed after {self.message_count} messages")
-            await self.agent.chat_client.close()
+            # Don't delete the agent since it's a pre-existing agent
+            self.project_client.close()
             
         self.thread = None
+        self.agent = None
         self.is_initialized = False
         
     
@@ -149,7 +135,7 @@ class AgentSession:
         """
         return {
             "session_id": self.session_id,
-            "thread_id": self.thread.service_thread_id if self.thread else None,
+            "conversation_id": self.conversation_id,
             "is_initialized": self.is_initialized,
             "message_count": self.message_count
         }
@@ -168,12 +154,12 @@ class Participant:
         self.name = name
         self.type = type
 
-    async def send_message(self, user_message: str, chat_session: AgentSession) -> str:
+    def send_message(self, user_message: str, chat_session: AgentSession) -> str:
         """
-        Send a message to the agent and get a response using the thread.
+        Send a message to the agent and get a response.
 
-        - This uses the SAME agent and thread every time
-        - The thread maintains conversation history
+        - This uses the SAME agent every time
+        - Conversation history is maintained by the Responses API
         - You can call this as many times as you want
         
         Args:
@@ -182,28 +168,49 @@ class Participant:
         Returns:
             The agent's response as a string
         """
-        if not chat_session.is_initialized or chat_session.agent is None or chat_session.thread is None:
+        if not chat_session.is_initialized:
             raise RuntimeError("Session not initialized. Call initialize() first.")
+        
+        if chat_session.agent is None or chat_session.project_client is None:
+            raise RuntimeError("Agent or client not initialized. Call initialize() first.")
         
         # Increment message counter
         chat_session.message_count += 1
 
-        # at the beginning of their message, add their name -> also see Instruction of agent :) Like this it will take into account who is speaking
+        # Add participant name to the message
         user_message = f"{self.name}: {user_message}"
         
-        # Send to the agent using the thread for conversation history
-        response = await chat_session.agent.run(user_message, thread=chat_session.thread, user_id=self.id)
+        # Get OpenAI client for Responses API
+        openai_client = chat_session.project_client.get_openai_client()
         
-        # Extract the text content from the response
-        if hasattr(response, 'text'):
-            return response.text
-        elif hasattr(response, 'content'):
-            return response.content
-        else:
-            return str(response)
+        # Build request body - include conversation_id if we have one to maintain context
+        extra_body = {"agent": {"name": chat_session.agent.name, "type": "agent_reference"}}
+        if chat_session.conversation_id:
+            extra_body["conversation_id"] = chat_session.conversation_id
+        
+        # Use Responses API to send message
+        response = openai_client.responses.create(
+            input=user_message,
+            extra_body=extra_body
+        )
+        
+        # Store conversation ID for future messages to maintain context
+        if hasattr(response, 'conversation_id'):
+            chat_session.conversation_id = response.conversation_id
+        
+        # Extract text from response
+        if hasattr(response, 'output_text') and response.output_text:
+            return response.output_text
+        elif hasattr(response, 'output') and response.output:
+            # Try to extract from output array
+            for item in response.output:
+                if hasattr(item, 'content'):
+                    return str(item.content)
+        
+        return "No response from agent"
 
 # Example usage for testing
-async def main():
+def main():
     """
     Example showing how to use AgentSession.
 
@@ -217,8 +224,7 @@ async def main():
     
     # Create and initialize session ONCE
     session = AgentSession(session_id="example-session")
-    await session.initialize()
-    
+    session.initialize()
     participant_alice = Participant(participant_id="ID_001", name="Alice", type="user")
     participant_bob = Participant(participant_id="ID_002", name="Bob", type="user")
     
@@ -235,35 +241,19 @@ async def main():
     # print("What pizza is Alice having? I want the same!")
     # print(f"Agent: {response4}")
 
-    response5 = await participant_bob.send_message("what's the weather now in Seattle?", session)
+    response5 = participant_bob.send_message("what's the weather now in Seattle?", session)
     print("What's the weather now in Seattle?")
     print(f"Agent: {response5}")
 
-    if False:
-        # Send multiple messages to the SAME agent
-        print("\n--- Message 1 ---")
-        response1 = await session.send_message("Hi! My name is Alice.")
-        print(f"Agent: {response1}")
-        
-        print("\n--- Message 2 ---")
-        response2 = await session.send_message("What's my name?")
-        print(f"Agent: {response2}")
-        print("(Notice: The agent remembered your name!)")
-        
-        print("\n--- Message 3 ---")
-        response3 = await session.send_message("Can you tell me a short joke?")
-        print(f"Agent: {response3}")
-        
-        # Show statistics
-        print("\n--- Session Statistics ---")
-        stats = session.get_stats()
-        print(f"Session ID: {stats['session_id']}")
-        print(f"Thread ID: {stats['thread_id']}")
-        print(f"Messages sent: {stats['message_count']}")
+    # Show statistics
+    print("\n--- Session Statistics ---")
+    stats = session.get_stats()
+    print(f"Session ID: {stats['session_id']}")
+    print(f"Conversation ID: {stats['conversation_id']}")
+    print(f"Messages sent: {stats['message_count']}")
     
     # Clean up
-    await session.close()
+    session.close()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()

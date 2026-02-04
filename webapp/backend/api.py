@@ -106,7 +106,7 @@ async def root():
 
 
 @app.post("/api/session/init", response_model=InitSessionResponse)
-async def initialize_session(request: InitSessionRequest):
+def initialize_session(request: InitSessionRequest):
     """Initialize the agent session"""
     global chat_session, participants_dict
     
@@ -118,7 +118,7 @@ async def initialize_session(request: InitSessionRequest):
     
     try:
         chat_session = AgentSession(session_id=request.session_id)
-        await chat_session.initialize()
+        chat_session.initialize()
         participants_dict = {}  # Reset participants
         
         # Create default participant "Andreea"
@@ -208,7 +208,7 @@ async def list_participants():
 
 
 @app.post("/api/messages/send", response_model=MessageResponse)
-async def send_message(request: SendMessageRequest):
+def send_message(request: SendMessageRequest):
     """Send a message from a participant and get agent response"""
     global chat_session, participants_dict
     
@@ -220,12 +220,15 @@ async def send_message(request: SendMessageRequest):
     
     try:
         participant = participants_dict[request.participant_id]
-        response = await participant.send_message(request.message, chat_session)
+        response = participant.send_message(request.message, chat_session)
+
+        if response is None:
+            raise HTTPException(status_code=404, detail=f"Response is empty from agent")
         
         return MessageResponse(
             participant_id=participant.id,
             participant_name=participant.name,
-            message=response.text,
+            message=response,
             sender="bot"
         )
     except Exception as e:
@@ -308,7 +311,7 @@ async def get_message_history():
 
 
 @app.post("/api/session/close")
-async def close_session():
+def close_session():
     """Close the current session"""
     global chat_session, participants_dict
     
@@ -316,7 +319,7 @@ async def close_session():
         return {"message": "No active session"}
     
     try:
-        await chat_session.close()
+        chat_session.close()
         chat_session = None
         participants_dict = {}
         

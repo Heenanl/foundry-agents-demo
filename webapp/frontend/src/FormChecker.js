@@ -217,7 +217,7 @@ function FormChecker() {
                             <div className={`validation-status ${result.agent_result.validated ? 'valid' : 'invalid'}`}>
                               {result.agent_result.validated ? '✓ Validated' : '✗ Not Validated'}
                             </div>
-                          ) : (
+                          ) : (                                                                                     
                             <div className="validation-status pending">⏳ Pending</div>
                           )}
                         </td>
