@@ -43,23 +43,26 @@ class AgentSession:
         await session.close()
     """
     
-    def __init__(self, session_id: Optional[str] = None, instructions: Optional[str] = None):
+    def __init__(self, session_id: Optional[str] = None, instructions: Optional[str] = None, agent_name: Optional[str] = None, conversation_id: Optional[str] = None):
         """
         Initialize the agent session manager.
         
         Args:
             session_id: Optional identifier for this session (useful for logging)
             instructions: Optional custom instructions for the agent
+            agent_name: Optional specific agent name to use (overrides AZURE_AI_AGENT_NAME env var)
+            conversation_id: Optional conversation ID to continue an existing conversation
         """
         self.session_id = session_id or "default"
         self.project_client: Optional[AIProjectClient] = None
         self.agent: Optional[Any] = None
-        self.conversation_id: Optional[str] = None  # Conversation ID from Responses API
+        self.conversation_id: Optional[str] = conversation_id  # Conversation ID from Responses API or passed in
         self.message_count = 0
         self.is_initialized = False
         # array of Participants
         self.participants = []
         self.custom_instructions = instructions
+        self.agent_name = agent_name  # Store custom agent name
         
         # Load environment variables
         env_path = Path(__file__).parent.parent / '.env'
@@ -96,7 +99,8 @@ class AgentSession:
         )
         
         # Get existing agent instead of creating a new one
-        agent_name = os.getenv("AZURE_AI_AGENT_NAME", "rfp-summary-agent")
+        # Use custom agent_name if provided, otherwise fall back to env var
+        agent_name = self.agent_name or os.getenv("AZURE_AI_AGENT_NAME", "rfp-summary-agent")
         self.agent = self.project_client.agents.get(agent_name=agent_name)
         
         print(f"✓ Using existing agent: {self.agent.name} (ID: {self.agent.id})")
@@ -195,8 +199,21 @@ class Participant:
         )
         
         # Store conversation ID for future messages to maintain context
-        if hasattr(response, 'conversation_id'):
+        # Try multiple ways to get the conversation_id
+        if hasattr(response, 'conversation_id') and response.conversation_id:
             chat_session.conversation_id = response.conversation_id
+        elif hasattr(response, 'id'):
+            # Some APIs return 'id' instead of 'conversation_id'
+            chat_session.conversation_id = response.id
+        
+        # Debug: Print response structure to understand what we're getting
+        print(f"   Response type: {type(response)}")
+        if hasattr(response, '__dict__'):
+            print(f"   Response attributes: {list(response.__dict__.keys())}")
+        if chat_session.conversation_id:
+            print(f"   Conversation ID captured: {chat_session.conversation_id}")
+        else:
+            print(f"   ⚠️  No conversation_id found in response")
         
         # Extract text from response
         if hasattr(response, 'output_text') and response.output_text:

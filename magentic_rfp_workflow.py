@@ -1,0 +1,340 @@
+# Copyright (c) Microsoft. All rights reserved.
+"""
+Magentic Orchestrator Workflow with Existing Foundry Agents
+
+This workflow uses the Magentic pattern with:
+- ORCHESTRATOR: Plans, delegates tasks to specialists, synthesizes final output
+- SUMMARY AGENT: Summarizes RFP (can use AI Search grounding in Foundry)
+- RISK AGENT: Identifies and categorizes risks
+- COMPLIANCE AGENT: Creates compliance checklists
+
+Architecture:
+                    ┌─────────────────┐
+                    │  ORCHESTRATOR   │  ← Plans, delegates, synthesizes
+                    │     Agent       │
+                    └────────┬────────┘
+                             │
+           ┌─────────────────┼─────────────────┐
+           │                 │                 │
+           ▼                 ▼                 ▼
+    ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+    │   SUMMARY   │   │    RISK     │   │ COMPLIANCE  │
+    │   Agent     │   │   Agent     │   │   Agent     │
+    └─────────────┘   └─────────────┘   └─────────────┘
+           │                 │                 │
+           └─────────────────┼─────────────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │  FINAL OUTPUT   │
+                    └─────────────────┘
+
+Prerequisites:
+- Create these 4 agents in Azure AI Foundry:
+  * RfpOrchestratorAgent - Coordinates the workflow
+  * RfpSummaryAgent - Summarizes RFPs (optionally with AI Search)
+  * RfpRiskAgent - Risk analysis
+  * RfpComplianceAgent - Compliance checking
+- Run `az login` for authentication
+- Set environment variables in .env
+
+Usage:
+    python magentic_rfp_workflow.py
+"""
+
+import asyncio
+import json
+import os
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import cast
+from dataclasses import dataclass, field
+
+from agent_framework import (
+    AgentRunUpdateEvent,
+    ChatMessage,
+    GroupChatRequestSentEvent,
+    MagenticBuilder,
+    MagenticOrchestratorEvent,
+    MagenticProgressLedger,
+    WorkflowOutputEvent,
+)
+from agent_framework.azure import AzureAIProjectAgentProvider
+from azure.ai.projects.aio import AIProjectClient
+from azure.identity.aio import AzureCliCredential
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(Path(__file__).parent / '.env')
+
+
+@dataclass
+class WorkflowResult:
+    """Results from the Magentic workflow."""
+    workflow_run_id: str
+    final_output: str
+    conversation_messages: list[ChatMessage]
+    agent_calls: list[dict] = field(default_factory=list)
+    
+    def __str__(self):
+        return f"""
+{'='*70}
+📋 RFP ANALYSIS COMPLETE (Magentic Orchestration)
+{'='*70}
+Workflow Run ID: {self.workflow_run_id}
+Agent Calls: {len(self.agent_calls)}
+{'='*70}
+
+{self.final_output}
+
+{'='*70}
+"""
+
+
+async def run_magentic_rfp_workflow(user_query: str, interactive: bool = False) -> WorkflowResult:
+    """
+    Run the Magentic RFP analysis workflow.
+    
+    The orchestrator agent:
+    1. Creates a plan for analyzing the RFP
+    2. Delegates to specialist agents (Summary, Risk, Compliance)
+    3. Synthesizes the final comprehensive output
+    
+    Each agent has its OWN thread for AI Search queries.
+    A common workflow_run_id ties all agent calls together for logging/tracing.
+    The orchestrator maintains context via MagenticContext.chat_history.
+    
+    Args:
+        user_query: Natural language query (e.g., "Analyze the Woodgrove Bank RFP")
+        interactive: If True, pause for user input at orchestrator events
+        
+    Returns:
+        WorkflowResult with workflow_run_id, final output, and conversation history
+    """
+    # Generate a unique workflow run ID for logging/tracing
+    workflow_run_id = f"rfp-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    agent_calls: list[dict] = []  # Track all agent calls for logging
+    
+    # Get agent names from environment
+    orchestrator_name = os.getenv("AZURE_AI_AGENT_ORCHESTRATOR", "rfp-orchestrator-agent")
+    summary_name = os.getenv("AZURE_AI_AGENT_SUMMARY", "rfp-summary-agent")
+    risk_name = os.getenv("AZURE_AI_AGENT_RISK", "rfp-risk-agent")
+    compliance_name = os.getenv("AZURE_AI_AGENT_COMPLIANCE", "rfp-compliance-agent")
+    
+    async with (
+        AzureCliCredential() as credential,
+        AIProjectClient(endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"), credential=credential) as project_client,
+    ):
+        # Create a shared conversation on the service for all agents
+        # This ensures conversation_id is registered in Foundry portal
+        openai_client = project_client.get_openai_client()
+        conversation = await openai_client.conversations.create()
+        conversation_id = conversation.id
+        
+        print("\n" + "="*70)
+        print(f"🚀 Workflow Run ID: {workflow_run_id}")
+        print(f"📝 Conversation ID: {conversation_id}")
+        print("="*70)
+        print("Loading Agents from Azure AI Foundry...")
+        
+        # Create provider using the same project client
+        provider = AzureAIProjectAgentProvider(project_client=project_client)
+        
+        # Get existing agents from Foundry with shared conversation_id
+        # This registers the conversation in the Foundry portal
+        orchestrator_agent = await provider.get_agent(
+            name=orchestrator_name,
+            default_options={"conversation_id": conversation_id}
+        )
+        print(f"✓ Orchestrator: {orchestrator_agent.name}")
+        
+        summary_agent = await provider.get_agent(
+            name=summary_name,
+            default_options={"conversation_id": conversation_id}
+        )
+        print(f"✓ Summary Agent: {summary_agent.name}")
+        
+        risk_agent = await provider.get_agent(
+            name=risk_name,
+            default_options={"conversation_id": conversation_id}
+        )
+        print(f"✓ Risk Agent: {risk_agent.name}")
+        
+        compliance_agent = await provider.get_agent(
+            name=compliance_name,
+            default_options={"conversation_id": conversation_id}
+        )
+        print(f"✓ Compliance Agent: {compliance_agent.name}")
+        
+        print("\n" + "="*70)
+        print("🔧 Building Magentic Workflow...")
+        print("="*70)
+        
+        # Build the Magentic workflow
+        # The orchestrator coordinates the specialists
+        # Note: Agents already have system prompts and AI Search configured in Foundry
+        workflow = (
+            MagenticBuilder()
+            .participants([summary_agent, risk_agent, compliance_agent])
+            .with_manager(
+                agent=orchestrator_agent,
+                max_round_count=6,    # 1 per agent + synthesis + buffer
+                max_stall_count=3,    # Max stalls before forcing progress
+                max_reset_count=2,    # Max resets if workflow gets stuck
+            )
+            .build()
+        )
+        
+        print("✓ Workflow built successfully")
+        print(f"  - Orchestrator: {orchestrator_name}")
+        print(f"  - Participants: {summary_name}, {risk_name}, {compliance_name}")
+        
+        # Prepare the task for the workflow
+        # Agents use AI Search (RAG) to retrieve RFP content from their indexes
+        task = f"""
+{user_query}
+
+IMPORTANT: Each agent has access to AI Search indexes containing the RFP documents. 
+Do NOT ask for the document - use your grounding tools to search for and retrieve the content.
+
+Delegate to each team member ONCE to analyze:
+1. RfpSummaryAgent → search and summarize the RFP
+2. RfpRiskAgent → search and identify risks  
+3. RfpComplianceAgent → search and check compliance
+
+Then synthesize all findings into a comprehensive final report.
+"""
+        
+        print("\n" + "="*70)
+        print(f"▶️ Starting Workflow Execution... (Run ID: {workflow_run_id})")
+        print(f"User Query: {user_query}")
+        print("="*70)
+        
+        # Track state for streaming output
+        last_message_id: str | None = None
+        output_event: WorkflowOutputEvent | None = None
+        current_round = 0
+        
+        # Run the workflow with streaming
+        async for event in workflow.run_stream(task):
+            
+            # Agent is generating output (streaming tokens)
+            if isinstance(event, AgentRunUpdateEvent):
+                message_id = event.data.message_id
+                if message_id != last_message_id:
+                    if last_message_id is not None:
+                        print("\n")
+                    print(f"\n📝 [{event.executor_id}]:", end=" ", flush=True)
+                    last_message_id = message_id
+                print(event.data, end="", flush=True)
+            
+            # Orchestrator planning/progress event
+            elif isinstance(event, MagenticOrchestratorEvent):
+                print(f"\n\n{'='*50}")
+                print(f"🎯 [Orchestrator Event] Type: {event.event_type.name}")
+                
+                if isinstance(event.data, ChatMessage):
+                    print(f"Plan:\n{event.data.text}")
+                elif isinstance(event.data, MagenticProgressLedger):
+                    print(f"Progress Ledger:\n{json.dumps(event.data.to_dict(), indent=2)}")
+                
+                print("="*50)
+                
+                # Optionally pause for user review
+                if interactive:
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, input, "Press Enter to continue..."
+                    )
+            
+            # Request sent to a participant agent - LOG with workflow_run_id and conversation_id
+            elif isinstance(event, GroupChatRequestSentEvent):
+                current_round = event.round_index
+                agent_call = {
+                    "workflow_run_id": workflow_run_id,
+                    "conversation_id": conversation_id,
+                    "round": event.round_index,
+                    "agent": event.participant_name,
+                    "timestamp": datetime.now().isoformat(),
+                }
+                agent_calls.append(agent_call)
+                print(f"\n\n📤 [Conv: {conversation_id[:20]}...] Round {event.round_index} → {event.participant_name}")
+            
+            # Final output
+            elif isinstance(event, WorkflowOutputEvent):
+                output_event = event
+        
+        # Process final output
+        if not output_event:
+            raise RuntimeError("Workflow did not produce a final output event.")
+        
+        print("\n\n" + "="*70)
+        print(f"✅ Workflow Completed!")
+        print(f"   Run ID: {workflow_run_id}")
+        print(f"   Conversation ID: {conversation_id}")
+        print("="*70)
+        
+        # Log summary of agent calls
+        print(f"\n📊 Agent Call Summary (Conversation: {conversation_id}):")
+        for call in agent_calls:
+            print(f"   Round {call['round']}: {call['agent']} @ {call['timestamp']}")
+        
+        # Extract the final synthesized output
+        output_messages = cast(list[ChatMessage], output_event.data)
+        final_output = output_messages[-1].text if output_messages else "No output generated"
+        
+        return WorkflowResult(
+            workflow_run_id=workflow_run_id,
+            final_output=final_output,
+            conversation_messages=output_messages,
+            agent_calls=agent_calls
+        )
+
+
+async def main():
+    """Main entry point."""
+    print("\n🚀 Magentic RFP Analysis Workflow")
+    print("="*70)
+    print("Pattern: Orchestrator → [Summary, Risk, Compliance] → Final Output")
+    print("="*70)
+    
+    # Check configuration
+    endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
+    if not endpoint:
+        print("\n❌ ERROR: AZURE_AI_PROJECT_ENDPOINT not set in .env")
+        return
+    
+    print(f"\nProject Endpoint: {endpoint}")
+    print(f"Orchestrator: {os.getenv('AZURE_AI_AGENT_ORCHESTRATOR', 'rfp-orchestrator-agent')}")
+    print(f"Summary Agent: {os.getenv('AZURE_AI_AGENT_SUMMARY', 'rfp-summary-agent')}")
+    print(f"Risk Agent: {os.getenv('AZURE_AI_AGENT_RISK', 'rfp-risk-agent')}")
+    print(f"Compliance Agent: {os.getenv('AZURE_AI_AGENT_COMPLIANCE', 'rfp-compliance-agent')}")
+    
+    # User query - agents will use AI Search to retrieve RFP content
+    user_query = "Analyze the Woodgrove Bank RFP and provide a summary, risk assessment, and compliance review"
+    
+    print(f"\n📝 User Query: {user_query}")
+    
+    try:
+        # Run the Magentic workflow
+        # Set interactive=True to pause and review orchestrator plans
+        result = await run_magentic_rfp_workflow(user_query, interactive=False)
+        
+        # Print final results
+        print(str(result))
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        print("\nTroubleshooting:")
+        print("1. Run 'az login' to authenticate")
+        print("2. Verify agents exist in Foundry with exact names:")
+        print("   - RfpOrchestratorAgent")
+        print("   - RfpSummaryAgent")
+        print("   - RfpRiskAgent")
+        print("   - RfpComplianceAgent")
+        print("3. Check AZURE_AI_PROJECT_ENDPOINT in .env")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

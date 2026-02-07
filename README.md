@@ -1,12 +1,68 @@
 # MCAPS_Tech_Connect_2026_Foundry
 
-TODO:
+Multi-agent RFP Analysis system with Magentic orchestration pattern.
+
+## TODO
 - deployment doesn't deploy a Foundry Project <-- add it
+- The user_query to start the magentic workflow is hardcoded , so no matter what the input prompt on UI. the workflow is executed . Fix this to show guardrails are implemented.
+- The scrolling on Magentic UI does not work so the result is half shown at the bottom
+- The progress status for each stage needs to be synced with the run of respective agents within the orchastration flow. This does not happen ritw now.
 
-
+## Setup
 
 1. Read and follow README from deployment folder to deploy the infrastructure for AI Agents.
-2. ``cd`` into webapp -> run ``npm start`` to start the web application.
-3. To test the agent code, ``cd`` into agent folder and run  ``python agent_session.py``. There are some tests in main
-4. One powershell: Run backend ``python webapp\backend\api.py`` make sure to have the .venv activated
-5. Second powershell: Run frontend via ``cd webapp\frontend`` and then ``npm start``
+2. Create and activate a Python virtual environment:
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+3. Install backend dependencies:
+   ```powershell
+   pip install -r webapp\backend\requirements.txt
+   ```
+4. Install frontend dependencies:
+   ```powershell
+   cd webapp\frontend
+   npm install
+   cd ..\..
+   ```
+
+## Running the Application
+
+### Backend API Server
+In one PowerShell terminal with `.venv` activated:
+```powershell
+.\.venv\Scripts\python.exe webapp\backend\api.py
+```
+The backend API will start on `http://localhost:8000`
+
+### Frontend UI
+In another PowerShell terminal:
+```powershell
+cd webapp\frontend
+npm start
+```
+The React app will start on `http://localhost:3000`
+
+### Access the Magentic RFP Analysis UI
+Once both servers are running, navigate to:
+```
+http://localhost:3000/magentic
+```
+
+## Running Magentic Workflow Standalone
+
+To test the Magentic workflow directly (without the UI):
+```powershell
+.\.venv\Scripts\python.exe magentic_rfp_workflow.py
+```
+
+This will run the orchestrator agent with the default query. Edit the `main()` function in `magentic_rfp_workflow.py` to customize the query.
+
+## Testing Agent Code
+
+To test the agent session code:
+```powershell
+cd agent
+python agent_session.py
+```
