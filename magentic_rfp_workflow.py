@@ -290,6 +290,140 @@ Then synthesize all findings into a comprehensive final report.
         )
 
 
+async def run_magentic_rfp_workflow_stream(user_query: str):
+    """
+    Stream the Magentic RFP workflow execution with real-time progress updates.
+    
+    Yields progress events as each agent executes, allowing the frontend
+    to update the UI in real-time.
+    
+    Args:
+        user_query: Natural language query
+        
+    Yields:
+        dict: Progress events with type, agent name, and status
+    """
+    workflow_run_id = f"rfp-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    agent_calls: list[dict] = []
+    
+    # Get agent names
+    orchestrator_name = os.getenv("AZURE_AI_AGENT_ORCHESTRATOR", "rfp-orchestrator-agent")
+    summary_name = os.getenv("AZURE_AI_AGENT_SUMMARY", "rfp-summary-agent")
+    risk_name = os.getenv("AZURE_AI_AGENT_RISK", "rfp-risk-agent")
+    compliance_name = os.getenv("AZURE_AI_AGENT_COMPLIANCE", "rfp-compliance-agent")
+    
+    try:
+        async with (
+            AzureCliCredential() as credential,
+            AIProjectClient(endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"), credential=credential) as project_client,
+        ):
+            # Create conversation
+            openai_client = project_client.get_openai_client()
+            conversation = await openai_client.conversations.create()
+            conversation_id = conversation.id
+            
+            yield {
+                "type": "start",
+                "workflow_run_id": workflow_run_id,
+                "conversation_id": conversation_id,
+                "query": user_query
+            }
+            
+            # Load agents
+            provider = AzureAIProjectAgentProvider(project_client=project_client)
+            orchestrator_agent = await provider.get_agent(name=orchestrator_name, default_options={"conversation_id": conversation_id})
+            summary_agent = await provider.get_agent(name=summary_name, default_options={"conversation_id": conversation_id})
+            risk_agent = await provider.get_agent(name=risk_name, default_options={"conversation_id": conversation_id})
+            compliance_agent = await provider.get_agent(name=compliance_name, default_options={"conversation_id": conversation_id})
+            
+            # Build workflow
+            workflow = (
+                MagenticBuilder()
+                .participants([summary_agent, risk_agent, compliance_agent])
+                .with_manager(agent=orchestrator_agent, max_round_count=6, max_stall_count=3, max_reset_count=2)
+                .build()
+            )
+            
+            # Prepare the task with instructions (same as non-streaming workflow)
+            task = f"""
+{user_query}
+
+IMPORTANT: Each agent has access to AI Search indexes containing the RFP documents. 
+Do NOT ask for the document - use your grounding tools to search for and retrieve the content.
+
+Delegate to each team member ONCE to analyze:
+1. RfpSummaryAgent → search and summarize the RFP
+2. RfpRiskAgent → search and identify risks  
+3. RfpComplianceAgent → search and check compliance
+
+Then synthesize all findings into a comprehensive final report.
+"""
+            
+            # Notify orchestrator started
+            yield {
+                "type": "agent_start",
+                "agent": orchestrator_name,
+                "status": "processing"
+            }
+            
+            # Run workflow with streaming
+            output_event: WorkflowOutputEvent | None = None
+            async for event in workflow.run_stream(task):
+                
+                # Request sent to participant agent
+                if isinstance(event, GroupChatRequestSentEvent):
+                    agent_call = {
+                        "workflow_run_id": workflow_run_id,
+                        "conversation_id": conversation_id,
+                        "round": event.round_index,
+                        "agent": event.participant_name,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                    agent_calls.append(agent_call)
+                    
+                    # Notify agent started
+                    yield {
+                        "type": "agent_start",
+                        "agent": event.participant_name,
+                        "status": "processing",
+                        "round": event.round_index
+                    }
+                
+                # Final output
+                elif isinstance(event, WorkflowOutputEvent):
+                    output_event = event
+            
+            # Mark all agents as completed
+            for call in agent_calls:
+                yield {
+                    "type": "agent_complete",
+                    "agent": call["agent"],
+                    "status": "completed"
+                }
+            
+            # Extract final output
+            if output_event:
+                output_messages = cast(list[ChatMessage], output_event.data)
+                final_output = output_messages[-1].text if output_messages else "No output generated"
+            else:
+                final_output = "No output generated"
+            
+            # Send final result
+            yield {
+                "type": "complete",
+                "workflow_run_id": workflow_run_id,
+                "conversation_id": conversation_id,
+                "final_output": final_output,
+                "agent_calls": agent_calls
+            }
+            
+    except Exception as e:
+        yield {
+            "type": "error",
+            "message": str(e)
+        }
+
+
 async def main():
     """Main entry point."""
     print("\n🚀 Magentic RFP Analysis Workflow")

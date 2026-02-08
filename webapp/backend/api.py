@@ -604,6 +604,48 @@ async def run_magentic_workflow_endpoint(request: MagenticWorkflowRequest):
         )
 
 
+@app.get("/api/magentic/analyze/stream")
+async def run_magentic_workflow_stream_endpoint(query: str):
+    """
+    Stream the Magentic workflow execution with real-time progress updates.
+    Returns Server-Sent Events (SSE) with agent progress.
+    """
+    print(f"\n{'='*60}")
+    print(f"🔄 Streaming Magentic Workflow")
+    print(f"Query: {query}")
+    print(f"{'='*60}")
+    
+    async def event_generator():
+        try:
+            # Import the streaming workflow function
+            from magentic_rfp_workflow import run_magentic_rfp_workflow_stream
+            
+            async for event_data in run_magentic_rfp_workflow_stream(query):
+                # Send SSE event
+                print(f"Sending event: {event_data.get('type', 'unknown')}")
+                yield f"data: {json.dumps(event_data)}\n\n"
+                
+        except Exception as e:
+            import traceback
+            error_data = {
+                "type": "error",
+                "message": str(e),
+                "traceback": traceback.format_exc()
+            }
+            print(f"ERROR in streaming: {error_data}")
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
 @app.get("/magentic", response_class=HTMLResponse)
 async def magentic_frontend():
     """Serve the Magentic workflow frontend"""

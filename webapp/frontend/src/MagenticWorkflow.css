@@ -16,6 +16,8 @@ body {
   padding: 20px;
   padding-bottom: 60px;
   position: relative;
+  min-height: 100vh;
+  overflow-y: auto;
 }
 
 /* Connected Status Badge */
@@ -64,6 +66,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  padding-bottom: 40px;
 }
 
 /* Sections */
@@ -286,8 +289,8 @@ body {
 .success-banner {
   background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
   border: 2px solid #10b981;
-  border-radius: 15px;
-  padding: 35px;
+  border-radius: 12px;
+  padding: 16px 20px;
   text-align: center;
   box-shadow: 0 4px 20px rgba(16, 185, 129, 0.2);
   animation: gentle-glow 3s infinite;
@@ -301,8 +304,8 @@ body {
 .success-banner h1 {
   margin: 0;
   color: #065f46;
-  font-size: 2rem;
-  font-weight: 700;
+  font-size: 1.3rem;
+  font-weight: 600;
 }
 
 /* Report Container */

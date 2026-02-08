@@ -5,8 +5,10 @@ Multi-agent RFP Analysis system with Magentic orchestration pattern.
 ## TODO
 - deployment doesn't deploy a Foundry Project <-- add it
 - The user_query to start the magentic workflow is hardcoded , so no matter what the input prompt on UI. the workflow is executed . Fix this to show guardrails are implemented.
-- The scrolling on Magentic UI does not work so the result is half shown at the bottom
-- The progress status for each stage needs to be synced with the run of respective agents within the orchastration flow. This does not happen ritw now.
+
+## RESOLVED
+- ✅ The scrolling on Magentic UI - Fixed by removing height constraints
+- ✅ The progress status for each stage synced with agent execution - Agent status now properly tracks rfp-summary-agent, rfp-risk-agent, rfp-compliance-agent completion
 
 ## Setup
 

@@ -39,58 +39,104 @@ function MagenticWorkflow() {
       message: `RFP query submitted: "${query.substring(0, 50)}..."`
     }]);
 
-    // Mark orchestrator as processing
-    setAgentStatus(prev => ({ ...prev, orchestrator: 'processing' }));
-
     try {
-      const response = await fetch('http://localhost:8000/api/magentic/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: query,
-          interactive: false
-        })
-      });
+      // Use EventSource for Server-Sent Events streaming
+      const eventSource = new EventSource(
+        `http://localhost:8000/api/magentic/analyze/stream?query=${encodeURIComponent(query)}`
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Analysis failed');
-      }
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('SSE Event:', data);
 
-      const data = await response.json();
-      
-      // Update agent status based on agent_calls
-      const completedAgents = new Set();
-      if (data.agent_calls) {
-        data.agent_calls.forEach(call => {
-          // Backend uses 'agent' field, not 'agent_name'
-          const agentName = call.agent || call.agent_name;
-          if (!agentName) return;
+        if (data.type === 'start') {
+          setOutputs(prev => [...prev, {
+            time: new Date().toLocaleTimeString(),
+            message: `Workflow started: ${data.workflow_run_id}`
+          }]);
+        } 
+        else if (data.type === 'agent_start') {
+          const agentName = data.agent.toLowerCase();
+          console.log(`Agent starting: ${data.agent}`);
           
-          const agentLower = agentName.toLowerCase();
-          // Map backend agent names to our status keys
-          if (agentLower.includes('orchestrator')) completedAgents.add('orchestrator');
-          else if (agentLower.includes('summary')) completedAgents.add('summary');
-          else if (agentLower.includes('risk')) completedAgents.add('risk');
-          else if (agentLower.includes('compliance')) completedAgents.add('compliance');
-        });
-      }
-      
-      // Mark all completed agents
-      setAgentStatus({
-        orchestrator: completedAgents.has('orchestrator') ? 'completed' : 'pending',
-        summary: completedAgents.has('summary') ? 'completed' : 'pending',
-        risk: completedAgents.has('risk') ? 'completed' : 'pending',
-        compliance: completedAgents.has('compliance') ? 'completed' : 'pending'
-      });
-      
-      setResults(data);
-      setOutputs(prev => [...prev, {
-        time: new Date().toLocaleTimeString(),
-        message: 'Analysis completed successfully'
-      }]);
+          setOutputs(prev => [...prev, {
+            time: new Date().toLocaleTimeString(),
+            message: `${data.agent} started processing...`
+          }]);
+
+          // Update status to processing
+          if (agentName.includes('orchestrator')) {
+            setAgentStatus(prev => ({ ...prev, orchestrator: 'processing' }));
+          } else if (agentName.includes('summary')) {
+            setAgentStatus(prev => ({ ...prev, summary: 'processing' }));
+          } else if (agentName.includes('risk')) {
+            setAgentStatus(prev => ({ ...prev, risk: 'processing' }));
+          } else if (agentName.includes('compliance')) {
+            setAgentStatus(prev => ({ ...prev, compliance: 'processing' }));
+          }
+        }
+        else if (data.type === 'agent_complete') {
+          const agentName = data.agent.toLowerCase();
+          console.log(`Agent completed: ${data.agent}`);
+          
+          setOutputs(prev => [...prev, {
+            time: new Date().toLocaleTimeString(),
+            message: `✓ ${data.agent} completed`
+          }]);
+
+          // Update status to completed
+          if (agentName.includes('orchestrator')) {
+            setAgentStatus(prev => ({ ...prev, orchestrator: 'completed' }));
+          } else if (agentName.includes('summary')) {
+            setAgentStatus(prev => ({ ...prev, summary: 'completed' }));
+          } else if (agentName.includes('risk')) {
+            setAgentStatus(prev => ({ ...prev, risk: 'completed' }));
+          } else if (agentName.includes('compliance')) {
+            setAgentStatus(prev => ({ ...prev, compliance: 'completed' }));
+          }
+        }
+        else if (data.type === 'complete') {
+          console.log('Workflow complete');
+          setResults({
+            workflow_run_id: data.workflow_run_id,
+            conversation_id: data.conversation_id,
+            final_output: data.final_output,
+            agent_calls: data.agent_calls
+          });
+          
+          // Mark orchestrator as completed when workflow finishes
+          setAgentStatus(prev => ({ ...prev, orchestrator: 'completed' }));
+          
+          setOutputs(prev => [...prev, {
+            time: new Date().toLocaleTimeString(),
+            message: 'Analysis completed successfully!'
+          }]);
+          
+          eventSource.close();
+          setLoading(false);
+        }
+        else if (data.type === 'error') {
+          console.error('Workflow error:', data.message);
+          setOutputs(prev => [...prev, {
+            time: new Date().toLocaleTimeString(),
+            message: `Error: ${data.message}`,
+            error: true
+          }]);
+          eventSource.close();
+          setLoading(false);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('EventSource error:', error);
+        setOutputs(prev => [...prev, {
+          time: new Date().toLocaleTimeString(),
+          message: 'Connection error occurred',
+          error: true
+        }]);
+        eventSource.close();
+        setLoading(false);
+      };
 
     } catch (err) {
       setOutputs(prev => [...prev, {
@@ -104,7 +150,6 @@ function MagenticWorkflow() {
         risk: 'pending',
         compliance: 'pending'
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -133,16 +178,18 @@ function MagenticWorkflow() {
           </div>
         </div>
 
-        {loading && (
+        {(loading || results) && (
           <div className="progress-section">
             <div className="section-header">
               <span className="icon">📊</span>
               <h2>Analysis Progress</h2>
             </div>
-            <div className="spinner-container">
-              <div className="spinner"></div>
-              <p className="spinner-text">Processing RFP Analysis...</p>
-            </div>
+            {loading && (
+              <div className="spinner-container">
+                <div className="spinner"></div>
+                <p className="spinner-text">Processing RFP Analysis...</p>
+              </div>
+            )}
             <div className="steps-container">
               {steps.map((step) => (
                 <div
@@ -208,17 +255,6 @@ function MagenticWorkflow() {
                   <div className="output-content">
                     <div className="output-time">{output.time}</div>
                     <div className="output-message">{output.message}</div>
-                  </div>
-                </div>
-              ))}
-
-              {results && results.agent_calls && results.agent_calls.map((call, idx) => (
-                <div key={`call-${idx}`} className="output-item">
-                  <div className="output-border"></div>
-                  <div className="output-content">
-                    <div className="output-time">{call.timestamp}</div>
-                    <div className="output-label">{call.agent || call.agent_name || 'Agent'}</div>
-                    <div className="output-message">{call.agent_response || 'Processing...'}</div>
                   </div>
                 </div>
               ))}
