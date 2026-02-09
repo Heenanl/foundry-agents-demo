@@ -1,0 +1,106 @@
+{
+  "name": "RFP All Agents Comparison",
+  "evaluators": [
+    "builtin.groundedness",
+    "builtin.relevance",
+    "builtin.coherence",
+    "builtin.fluency",
+    "builtin.task_adherence",
+    "builtin.violence",
+    "builtin.hate_unfairness",
+    "builtin.sexual",
+    "builtin.self_harm"
+  ],
+  "data": [
+    {
+      "query": "Summarize the key deliverables in the Woodgrove Bank RFP response from Contoso",
+      "ground_truth": "The proposal includes four key deliverables: website redesign aligned with Woodgrove's brand identity, a user-friendly Content Management System (CMS), e-commerce integration for secure online banking transactions, and compliance and security services to adhere to industry regulations.",
+      "context": "Proposed Services: 1. Website Redesign: Create a responsive and visually appealing website that aligns with Woodgrove's brand identity. 2. Content Management System (CMS): Develop a user-friendly CMS to allow your staff to update content easily. 3. E-Commerce Integration: Implement secure online banking transactions and product offerings. 4. Compliance and Security: Ensure that all web solutions adhere to industry regulations and standards."
+    },
+    {
+      "query": "What is the total pricing and cost breakdown proposed by Contoso?",
+      "ground_truth": "Total estimated cost is $125,000, broken down as: Website Redesign $50,000, CMS Development $30,000, E-Commerce Integration $25,000, and Testing and Compliance $20,000.",
+      "context": "Pricing Structure: Our pricing for the proposed services is as follows: Website Redesign: $50,000. CMS Development: $30,000. E-Commerce Integration: $25,000. Testing and Compliance: $20,000. Total Estimated Cost: $125,000."
+    },
+    {
+      "query": "What are the main risks identified in the Contoso RFP response?",
+      "ground_truth": "Three main risks are identified: regulatory compliance failure that may result in penalties, data security breaches involving safeguarding customer data, and project timeline delays due to external factors.",
+      "context": "Risk Assessment: We acknowledge that there are inherent risks associated with digital projects. Some identified risks include: Regulatory Compliance: Failure to meet banking regulations may result in penalties. Data Security Breaches: Risks involved in safeguarding customer data. Project Timeline Delays: External factors may affect project milestones."
+    },
+    {
+      "query": "What risk mitigation strategies does Contoso propose?",
+      "ground_truth": "Contoso proposes three mitigation strategies: regular compliance audits and updates, implementation of robust security measures including encryption and firewalls, and Agile project management to quickly adapt to unforeseen changes.",
+      "context": "Mitigation Strategies: Regular compliance audits and updates. Implementation of robust security measures including encryption and firewalls. Agile project management to quickly adapt to unforeseen changes."
+    },
+    {
+      "query": "What is the project approach proposed by Contoso?",
+      "ground_truth": "Contoso proposes a five-phase approach: Discovery Phase (analysis of current web environment and stakeholder interviews), Design Phase (wireframes and prototypes), Development Phase (building the web platform), Testing Phase (QA including security penetration testing), and Launch and Support (ongoing support and training post-launch).",
+      "context": "Project Approach: Discovery Phase: Conduct a thorough analysis of your current web environment and customer needs through stakeholder interviews. Design Phase: Develop wireframes and prototypes for review and feedback. Development Phase: Utilize state-of-the-art technologies to build the web platform. Testing Phase: Rigorous testing for quality assurance including security penetration testing. Launch and Support: Provide ongoing support and training to Woodgrove Bank staff post-launch."
+    },
+    {
+      "query": "What are Contoso's key qualifications for this project?",
+      "ground_truth": "Contoso has three key qualifications: a proven track record of successfully delivering over 100 web projects for financial institutions and service providers, an expert team of 50+ certified developers, designers, and project managers, and implementation of Agile methodology for flexibility and faster delivery.",
+      "context": "Key Qualifications: Proven Track Record: Successfully delivered over 100 web projects for financial institutions and service providers. Expert Team: 50+ certified developers, designers, and project managers available to work on your project. Agile Methodology: Implementation of Agile practices ensures flexibility and faster delivery."
+    },
+    {
+      "query": "Who submitted the RFP response and what is their contact information?",
+      "ground_truth": "The RFP response was submitted by Contoso Ltd. The contact person is John Doe, Business Development Manager, reachable at john.doe@contoso.com or phone (123) 456-7890.",
+      "context": "Submitted to: Woodgrove Bank. Submitted by: Contoso Ltd. Contact Information: John Doe, Business Development Manager, Contoso Ltd. Email: john.doe@contoso.com. Phone: (123) 456-7890."
+    },
+    {
+      "query": "What does the testing phase include in the Contoso proposal?",
+      "ground_truth": "The testing phase includes rigorous testing for quality assurance, including security penetration testing. Testing and compliance services are priced at $20,000.",
+      "context": "Project Approach - Testing Phase: Rigorous testing for quality assurance including security penetration testing. Pricing Structure: Testing and Compliance: $20,000."
+    },
+    {
+      "query": "What are Woodgrove Bank's needs as understood by Contoso?",
+      "ground_truth": "Contoso recognizes that Woodgrove Bank desires a robust web presence that enhances customer engagement while ensuring data security and compliance with regulatory requirements, and that it is crucial to modernize their web platform given the rise in digital banking solutions.",
+      "context": "Understanding Woodgrove Bank's Needs: We recognize that Woodgrove Bank desires a robust web presence that enhances customer engagement while ensuring data security and compliance with regulatory requirements. With the rise in digital banking solutions, it is crucial to modernize your web platform."
+    },
+    {
+      "query": "What technical risks should be evaluated when reviewing RFPs?",
+      "ground_truth": "Technical risks to evaluate include: technology compatibility with existing systems, the vendor's technical capability and expertise, security features of the proposed technology (encryption, authentication, access controls), and compliance with relevant industry standards and regulations such as GDPR and HIPAA.",
+      "context": "Technical Risks: Technology Compatibility: Evaluate whether the proposed solutions are compatible with existing systems and technologies. Vendor's Technical Capability: Assess the vendor's expertise, experience, and resources in delivering the proposed solution. Security Features: Review the security features of the technology being proposed, including encryption, authentication, and access controls. Compliance with Standards: Ensure that the technology complies with relevant industry standards and regulations (e.g., GDPR, HIPAA)."
+    },
+    {
+      "query": "What operational risks should be considered in RFP evaluation?",
+      "ground_truth": "Operational risks to consider include: the operational impact on the organization's processes, the vendor's ability to manage change and transitions during implementation, the level of training required for staff to use the proposed solution, and the vendor's plan for ongoing support and maintenance post-deployment.",
+      "context": "Operational Risks: Operational Impact: Analyze how the proposed solution will affect the organization's operational processes. Change Management: Consider the vendor's ability to manage the transition and any operational changes that may arise during implementation. Training Requirements: Determine the level of training required for staff to effectively use the proposed solution. Support and Maintenance: Evaluate the vendor's plan for ongoing support and maintenance post-deployment."
+    },
+    {
+      "query": "What financial risks are outlined in the RFP evaluation guidelines?",
+      "ground_truth": "Financial risks include: potential for cost overruns and the vendor's budget management history, review of proposed payment terms for financial risks or liabilities, evaluation of the vendor's financial stability to avoid bankruptcy risk, and assessment of projected return on investment (ROI) alignment with organizational goals.",
+      "context": "Financial Risks: Cost Overruns: Assess potential for budget overruns and the vendor's history with managing project budgets. Payment Terms: Review the proposed payment structure to identify any financial risks or liabilities. Financial Stability of Vendor: Evaluate the vendor's financial health to ensure they can deliver on the project without risk of bankruptcy or financial failure. Return on Investment (ROI): Consider the projected ROI and whether it aligns with organizational goals."
+    },
+    {
+      "query": "What project management risks are identified in the RFP guidelines?",
+      "ground_truth": "Project management risks include: project plan viability (ensuring timelines and milestones are reasonable), resource allocation (sufficient time, personnel, technology), the vendor's risk management strategy throughout the project lifecycle, and stakeholder engagement strategy for managing expectations.",
+      "context": "Project Management Risks: Project Plan Viability: Review the proposed timeline and milestones to ensure they are reasonable and achievable. Resource Allocation: Assess if the vendor has allocated sufficient resources (time, personnel, technology) to meet project demands. Risk Management Strategy: Evaluate the vendor's approach to identifying, assessing, and mitigating risks throughout the project lifecycle. Stakeholder Engagement: Ensure that the vendor has a strategy for engaging stakeholders and managing their expectations effectively."
+    },
+    {
+      "query": "What compliance standards are mentioned in the RFP evaluation guidelines?",
+      "ground_truth": "The guidelines mention GDPR and HIPAA as relevant industry standards and regulations that the proposed technology should comply with.",
+      "context": "Technical Risks - Compliance with Standards: Ensure that the technology complies with relevant industry standards and regulations (e.g., GDPR, HIPAA)."
+    },
+    {
+      "query": "What security features should be reviewed when evaluating an RFP?",
+      "ground_truth": "Security features to review include encryption, authentication, and access controls of the proposed technology.",
+      "context": "Technical Risks - Security Features: Review the security features of the technology being proposed, including encryption, authentication, and access controls."
+    },
+    {
+      "query": "Does the Contoso proposal address regulatory compliance for Woodgrove Bank?",
+      "ground_truth": "Yes, Contoso proposes compliance and security services to ensure all web solutions adhere to industry regulations and standards. They also identify regulatory compliance as a risk, noting that failure to meet banking regulations may result in penalties, and propose regular compliance audits and updates as a mitigation strategy.",
+      "context": "Proposed Services - Compliance and Security: Ensure that all web solutions adhere to industry regulations and standards. Risk Assessment: Regulatory Compliance: Failure to meet banking regulations may result in penalties. Mitigation Strategies: Regular compliance audits and updates."
+    },
+    {
+      "query": "What post-launch support does Contoso offer?",
+      "ground_truth": "Contoso proposes ongoing support and training to Woodgrove Bank staff post-launch as part of their Launch and Support phase.",
+      "context": "Project Approach - Launch and Support: Provide ongoing support and training to Woodgrove Bank staff post-launch."
+    },
+    {
+      "query": "How does the RFP guidelines recommend addressing vendor financial stability?",
+      "ground_truth": "The guidelines recommend evaluating the vendor's financial health to ensure they can deliver on the project without risk of bankruptcy or financial failure. This falls under the financial risks category of RFP evaluation.",
+      "context": "Financial Risks - Financial Stability of Vendor: Evaluate the vendor's financial health to ensure they can deliver on the project without risk of bankruptcy or financial failure."
+    }
+  ]
+}

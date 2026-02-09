@@ -1,0 +1,66 @@
+{
+  "name": "rfp-compliance-agent Evaluation",
+  "evaluators": [
+    "builtin.groundedness",
+    "builtin.relevance",
+    "builtin.coherence",
+    "builtin.fluency",
+    "builtin.task_adherence",
+    "builtin.violence",
+    "builtin.hate_unfairness",
+    "builtin.sexual",
+    "builtin.self_harm"
+  ],
+  "data": [
+    {
+      "query": "Does the Contoso proposal address regulatory compliance for Woodgrove Bank?",
+      "ground_truth": "Yes, Contoso proposes compliance and security services to ensure all web solutions adhere to industry regulations and standards. They also identify regulatory compliance as a risk, noting that failure to meet banking regulations may result in penalties, and propose regular compliance audits and updates as a mitigation strategy.",
+      "context": "Proposed Services - Compliance and Security: Ensure that all web solutions adhere to industry regulations and standards. Risk Assessment: Regulatory Compliance: Failure to meet banking regulations may result in penalties. Mitigation Strategies: Regular compliance audits and updates."
+    },
+    {
+      "query": "What compliance standards are mentioned in the RFP evaluation guidelines?",
+      "ground_truth": "The guidelines mention GDPR and HIPAA as relevant industry standards and regulations that the proposed technology should comply with.",
+      "context": "Technical Risks - Compliance with Standards: Ensure that the technology complies with relevant industry standards and regulations (e.g., GDPR, HIPAA)."
+    },
+    {
+      "query": "What technical risks related to compliance should be evaluated in RFPs?",
+      "ground_truth": "Technical risks to evaluate include: technology compatibility with existing systems, the vendor's technical capability and expertise, security features of the proposed technology (encryption, authentication, access controls), and compliance with relevant industry standards and regulations such as GDPR and HIPAA.",
+      "context": "Technical Risks: Technology Compatibility: Evaluate whether the proposed solutions are compatible with existing systems and technologies. Vendor's Technical Capability: Assess the vendor's expertise, experience, and resources in delivering the proposed solution. Security Features: Review the security features of the technology being proposed, including encryption, authentication, and access controls. Compliance with Standards: Ensure that the technology complies with relevant industry standards and regulations (e.g., GDPR, HIPAA)."
+    },
+    {
+      "query": "What operational compliance considerations are in the RFP guidelines?",
+      "ground_truth": "Operational risks to consider include: the operational impact on the organization's processes, the vendor's ability to manage change and transitions during implementation, the level of training required for staff to use the proposed solution, and the vendor's plan for ongoing support and maintenance post-deployment.",
+      "context": "Operational Risks: Operational Impact: Analyze how the proposed solution will affect the organization's operational processes. Change Management: Consider the vendor's ability to manage the transition and any operational changes that may arise during implementation. Training Requirements: Determine the level of training required for staff to effectively use the proposed solution. Support and Maintenance: Evaluate the vendor's plan for ongoing support and maintenance post-deployment."
+    },
+    {
+      "query": "What financial compliance risks are outlined in the evaluation guidelines?",
+      "ground_truth": "Financial risks include: potential for cost overruns and the vendor's budget management history, review of proposed payment terms for financial risks or liabilities, evaluation of the vendor's financial stability to avoid bankruptcy risk, and assessment of projected return on investment (ROI) alignment with organizational goals.",
+      "context": "Financial Risks: Cost Overruns: Assess potential for budget overruns and the vendor's history with managing project budgets. Payment Terms: Review the proposed payment structure to identify any financial risks or liabilities. Financial Stability of Vendor: Evaluate the vendor's financial health to ensure they can deliver on the project without risk of bankruptcy or financial failure. Return on Investment (ROI): Consider the projected ROI and whether it aligns with organizational goals."
+    },
+    {
+      "query": "How does Contoso address data security compliance in their proposal?",
+      "ground_truth": "Contoso identifies data security breaches as a risk and proposes implementation of robust security measures including encryption and firewalls. Their testing phase also includes security penetration testing for quality assurance.",
+      "context": "Risk Assessment: Data Security Breaches: Risks involved in safeguarding customer data. Mitigation Strategies: Implementation of robust security measures including encryption and firewalls. Testing Phase: Rigorous testing for quality assurance including security penetration testing."
+    },
+    {
+      "query": "What regulatory risk does Contoso identify for the Woodgrove Bank project?",
+      "ground_truth": "Contoso identifies regulatory compliance as a risk, specifically noting that failure to meet banking regulations may result in penalties. They propose regular compliance audits and updates as a mitigation strategy.",
+      "context": "Risk Assessment: Regulatory Compliance: Failure to meet banking regulations may result in penalties. Mitigation Strategies: Regular compliance audits and updates."
+    },
+    {
+      "query": "What security features should be reviewed for compliance when evaluating an RFP?",
+      "ground_truth": "Security features to review include encryption, authentication, and access controls of the proposed technology.",
+      "context": "Technical Risks - Security Features: Review the security features of the technology being proposed, including encryption, authentication, and access controls."
+    },
+    {
+      "query": "What project management risks should be evaluated for compliance purposes?",
+      "ground_truth": "Project management risks include: project plan viability (ensuring timelines and milestones are reasonable), resource allocation (sufficient time, personnel, technology), the vendor's risk management strategy throughout the project lifecycle, and stakeholder engagement strategy for managing expectations.",
+      "context": "Project Management Risks: Project Plan Viability: Review the proposed timeline and milestones to ensure they are reasonable and achievable. Resource Allocation: Assess if the vendor has allocated sufficient resources (time, personnel, technology) to meet project demands. Risk Management Strategy: Evaluate the vendor's approach to identifying, assessing, and mitigating risks throughout the project lifecycle. Stakeholder Engagement: Ensure that the vendor has a strategy for engaging stakeholders and managing their expectations effectively."
+    },
+    {
+      "query": "How does the RFP guidelines recommend assessing vendor financial stability for compliance?",
+      "ground_truth": "The guidelines recommend evaluating the vendor's financial health to ensure they can deliver on the project without risk of bankruptcy or financial failure. This falls under the financial risks category of RFP evaluation.",
+      "context": "Financial Risks - Financial Stability of Vendor: Evaluate the vendor's financial health to ensure they can deliver on the project without risk of bankruptcy or financial failure."
+    }
+  ]
+}
