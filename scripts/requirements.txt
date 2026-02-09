@@ -1,0 +1,10 @@
+openai
+pandas>=1.3.0
+numpy
+pyyaml
+scipy
+tabulate
+azure-ai-projects>=2.0.0b1
+azure-identity
+aiohttp>=3.8.5
+packaging>=25.0

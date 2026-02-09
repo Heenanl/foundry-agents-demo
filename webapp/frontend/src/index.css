@@ -9,5 +9,5 @@ body {
   margin: 0;               /* Remove default margin around the page */
   padding: 0;              /* Remove default padding */
   font-family: Arial, sans-serif; /* Use a clean, simple font */
-  overflow: hidden;        /* Prevent scrolling on the body */
+  overflow: auto;          /* Allow scrolling on the body */
 }
