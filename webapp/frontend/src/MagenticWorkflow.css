@@ -115,6 +115,42 @@ body {
   background: linear-gradient(135deg, #6f42c1, #e83e8c);
 }
 
+/* Mode Toggle */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  background: white;
+  color: #6c757d;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover:not(:disabled) {
+  border-color: #6f42c1;
+  color: #6f42c1;
+}
+
+.mode-btn.active {
+  border-color: #6f42c1;
+  background: linear-gradient(135deg, #6f42c1, #e83e8c);
+  color: white;
+}
+
+.mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .query-input {
   width: 100%;
   padding: 16px;

@@ -8,9 +8,13 @@ import sys
 import asyncio
 from pathlib import Path
 
-# Add the agent directory to the Python path so we can import agent_session
+# Add the agent directory and backend directory to the Python path
 agent_path = Path(__file__).parent.parent.parent / 'agent'
+backend_path = Path(__file__).parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(agent_path))
+sys.path.insert(0, str(backend_path))
+sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,8 +29,6 @@ from agent_session import AgentSession, Participant
 from form_checker_api import router as form_checker_router
 
 # Import magentic workflow
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
 from magentic_rfp_workflow import run_magentic_rfp_workflow
 
 # Initialize FastAPI app
@@ -635,6 +637,46 @@ async def run_magentic_workflow_stream_endpoint(query: str):
             print(f"ERROR in streaming: {error_data}")
             yield f"data: {json.dumps(error_data)}\n\n"
     
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.get("/api/parallel/analyze/stream")
+async def run_parallel_workflow_stream_endpoint(query: str):
+    """
+    Stream the Parallel RFP workflow — all 3 agents run concurrently, then orchestrator synthesizes.
+    Much faster than Magentic (~30s vs ~100s). Same SSE event format for frontend compatibility.
+    """
+    print(f"\n{'='*60}")
+    print(f"⚡ Streaming Parallel Workflow")
+    print(f"Query: {query}")
+    print(f"{'='*60}")
+
+    async def event_generator():
+        try:
+            from magentic_rfp_workflow import run_parallel_rfp_workflow_stream
+
+            async for event_data in run_parallel_rfp_workflow_stream(query):
+                print(f"Sending event: {event_data.get('type', 'unknown')}")
+                yield f"data: {json.dumps(event_data)}\n\n"
+
+        except Exception as e:
+            import traceback
+            error_data = {
+                "type": "error",
+                "message": str(e),
+                "traceback": traceback.format_exc()
+            }
+            print(f"ERROR in parallel streaming: {error_data}")
+            yield f"data: {json.dumps(error_data)}\n\n"
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
