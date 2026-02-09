@@ -361,7 +361,7 @@ async def run_magentic_rfp_workflow_stream(user_query: str):
 IMPORTANT: Each agent has access to AI Search indexes containing the RFP documents. 
 Do NOT ask for the document - use your grounding tools to search for and retrieve the content.
 
-Delegate to each team member ONCE and only once:
+Delegate to each team member ONCE to analyze:
 1. rfp-summary-agent → search and summarize the RFP
 2. rfp-risk-agent → search and identify risks  
 3. rfp-compliance-agent → search and check compliance
