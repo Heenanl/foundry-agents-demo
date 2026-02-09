@@ -136,7 +136,7 @@ jobs:
       - name: Run Summary Agent Evaluation
         env:
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
-          DEPLOYMENT_NAME: "gpt-4o-mini"
+          DEPLOYMENT_NAME: "gpt-4.1-mini"
           AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.summary_agent_id }}
           DATA_PATH: data/rfp-summary-evaluation.json
         run: python scripts/action.py
@@ -170,7 +170,7 @@ jobs:
       - name: Run Risk Agent Evaluation
         env:
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
-          DEPLOYMENT_NAME: "gpt-4o-mini"
+          DEPLOYMENT_NAME: "gpt-4.1-mini"
           AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.risk_agent_id }}
           DATA_PATH: data/rfp-risk-evaluation.json
         run: python scripts/action.py
@@ -204,7 +204,7 @@ jobs:
       - name: Run Compliance Agent Evaluation
         env:
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
-          DEPLOYMENT_NAME: "gpt-4o-mini"
+          DEPLOYMENT_NAME: "gpt-4.1-mini"
           AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.compliance_agent_id }}
           DATA_PATH: data/rfp-compliance-evaluation.json
         run: python scripts/action.py
