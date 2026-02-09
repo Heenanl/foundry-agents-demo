@@ -352,9 +352,9 @@ IMPORTANT: Each agent has access to AI Search indexes containing the RFP documen
 Do NOT ask for the document - use your grounding tools to search for and retrieve the content.
 
 Delegate to each team member ONCE to analyze:
-1. RfpSummaryAgent → search and summarize the RFP
-2. RfpRiskAgent → search and identify risks  
-3. RfpComplianceAgent → search and check compliance
+1. rfp-summary-agent → search and summarize the RFP
+2. rfp-risk-agent → search and identify risks  
+3. rfp-compliance-agent → search and check compliance
 
 Then synthesize all findings into a comprehensive final report.
 """

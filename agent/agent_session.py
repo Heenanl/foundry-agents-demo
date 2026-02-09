@@ -187,10 +187,9 @@ class Participant:
         # Get OpenAI client for Responses API
         openai_client = chat_session.project_client.get_openai_client()
         
-        # Build request body - include conversation_id if we have one to maintain context
+        # Build request body - DO NOT include conversation_id in extra_body
+        # The Responses API maintains context automatically via the session
         extra_body = {"agent": {"name": chat_session.agent.name, "type": "agent_reference"}}
-        if chat_session.conversation_id:
-            extra_body["conversation_id"] = chat_session.conversation_id
         
         # Use Responses API to send message
         response = openai_client.responses.create(

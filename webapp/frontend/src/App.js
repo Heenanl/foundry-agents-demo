@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ChatPage from './ChatPage';
 import FormChecker from './FormChecker';
 import MagenticWorkflow from './MagenticWorkflow';
+import MagenticWorkflowWithChat from './MagenticWorkflowWithChat';
 import './App.css';
 
 function App() {
@@ -11,7 +12,8 @@ function App() {
       <Routes>
         <Route path="/" element={<ChatPage />} />
         <Route path="/form-checker" element={<FormChecker />} />
-        <Route path="/magentic" element={<MagenticWorkflow />} />
+        <Route path="/magentic" element={<MagenticWorkflowWithChat />} />
+        <Route path="/magentic-workflow" element={<MagenticWorkflow />} />
       </Routes>
     </Router>
   );
