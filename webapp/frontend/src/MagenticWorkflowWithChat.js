@@ -116,7 +116,7 @@ function MagenticWorkflowWithChat() {
 
     try {
       const eventSource = new EventSource(
-        `http://localhost:8000/api/magentic/analyze/stream?query=${encodeURIComponent(queryToUse)}`
+        `http://localhost:8000/api/parallel/analyze/stream?query=${encodeURIComponent(queryToUse)}`
       );
 
       eventSource.onmessage = (event) => {

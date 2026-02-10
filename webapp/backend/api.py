@@ -20,9 +20,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import json
 import asyncio
+from datetime import datetime
 from agent_session import AgentSession, Participant
 
 # Import form checker router
@@ -53,6 +54,9 @@ app.include_router(form_checker_router)
 # Global session storage
 chat_session: Optional[AgentSession] = None
 participants_dict = {}
+
+# SESSION CACHE - Store active chat sessions for reuse
+chat_sessions: Dict[str, tuple[AgentSession, Participant]] = {}
 
 
 # Request/Response Models
@@ -564,6 +568,76 @@ class MagenticWorkflowResponse(BaseModel):
     conversation_id: str
     final_output: str
     agent_calls: List[dict]
+
+
+class SimpleChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+
+class SimpleChatResponse(BaseModel):
+    response: str
+    session_id: str
+    trigger_workflow: bool = False
+
+
+@app.post("/api/magentic/chat", response_model=SimpleChatResponse)
+async def chat_with_orchestrator(request: SimpleChatRequest):
+    """
+    Chat with the orchestrator agent. If user requests analysis,
+    flag it to trigger the Magentic workflow.
+    Uses session caching - creates session once, reuses for all messages.
+    """
+    try:
+        # Check if message contains workflow trigger keywords
+        trigger_keywords = ['analyze', 'analysis', 'rfp', 'review', 'assess', 'evaluate', 'examine']
+        message_lower = request.message.lower()
+        should_trigger_workflow = any(keyword in message_lower for keyword in trigger_keywords)
+
+        if should_trigger_workflow:
+            return SimpleChatResponse(
+                response="I'll start the Magentic RFP Analysis workflow for you now...",
+                session_id=request.session_id or f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                trigger_workflow=True
+            )
+
+        # Get or create session
+        session_id = request.session_id or f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        if session_id in chat_sessions:
+            print(f"\u267b\ufe0f  Reusing existing session: {session_id}")
+            chat_session_cached, user = chat_sessions[session_id]
+        else:
+            print(f"\U0001f195 Creating new session: {session_id}")
+            chat_session_cached = AgentSession(
+                session_id=session_id,
+                agent_name="rfp-orchestrator-agent"
+            )
+            chat_session_cached.initialize()
+
+            user = Participant(
+                participant_id="USER",
+                name="User",
+                type="user"
+            )
+
+            chat_sessions[session_id] = (chat_session_cached, user)
+
+        response = user.send_message(request.message, chat_session_cached)
+
+        return SimpleChatResponse(
+            response=response or "I'm here to help with RFP analysis. What would you like to know?",
+            session_id=session_id,
+            trigger_workflow=False
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process chat message: {str(e)}"
+        )
 
 
 @app.post("/api/magentic/analyze", response_model=MagenticWorkflowResponse)

@@ -504,14 +504,12 @@ async def _call_agent(agent, task: str, agent_name: str) -> dict:
 
 async def run_parallel_rfp_workflow_stream(user_query: str):
     """
-    Parallel RFP workflow — runs all 3 specialist agents concurrently,
-    then uses the orchestrator agent for synthesis.
+    Hybrid RFP workflow — runs summary first, then passes context to
+    risk and compliance running in parallel, then orchestrator synthesizes.
 
     Architecture:
-        Summary  ─┐
-        Risk     ─┼─ (parallel, ~20s) → Orchestrator synthesis (~10s) = ~30s
-        Compliance┘
-
+        Summary (~15s) → Risk + Compliance with context (parallel, ~15s) → Synthesis (~14s) ≈ ~44s
+    
     Emits the same SSE event types as the Magentic workflow for frontend compatibility.
     """
     workflow_run_id = f"rfp-parallel-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
@@ -547,30 +545,54 @@ async def run_parallel_rfp_workflow_stream(user_query: str):
             risk_agent = await provider.get_agent(name=risk_name, default_options={"conversation_id": conversation_id})
             compliance_agent = await provider.get_agent(name=compliance_name, default_options={"conversation_id": conversation_id})
 
-            # --- Phase 1: All 3 agents in parallel ---
-            agent_task = f"""{user_query}
+            base_task = f"""{user_query}
 
 IMPORTANT: You have access to AI Search indexes containing the RFP documents.
 Use your grounding tools to search for and retrieve the content. Do NOT ask for documents."""
 
-            # Notify all 3 agents started simultaneously
-            for name in [summary_name, risk_name, compliance_name]:
+            # --- Phase 1: Summary agent first ---
+            yield {"type": "agent_start", "agent": summary_name, "status": "processing"}
+
+            print(f"\n📋 [Phase 1] Running summary agent first...")
+            summary_start = datetime.now()
+            summary_result = await _call_agent(summary_agent, base_task, summary_name)
+            summary_elapsed = (datetime.now() - summary_start).total_seconds()
+
+            print(f"✅ [Phase 1] Summary done in {summary_result['elapsed']:.1f}s | {len(summary_result['text'])} chars")
+            agent_calls.append({
+                "workflow_run_id": workflow_run_id,
+                "conversation_id": conversation_id,
+                "agent": summary_result["agent"],
+                "elapsed": summary_result["elapsed"],
+                "timestamp": datetime.now().isoformat(),
+            })
+            yield {"type": "agent_complete", "agent": summary_name, "status": "completed"}
+
+            # --- Phase 2: Risk + Compliance in parallel, with summary context ---
+            context_task = f"""{base_task}
+
+Here is the executive summary from the Summary Agent for context:
+
+{summary_result['text']}
+
+Use the above summary as context, but also search the RFP documents directly for your own analysis."""
+
+            for name in [risk_name, compliance_name]:
                 yield {"type": "agent_start", "agent": name, "status": "processing"}
 
-            print(f"\n🚀 [Parallel] Launching 3 agents concurrently...")
+            print(f"\n🚀 [Phase 2] Launching risk + compliance in parallel (with summary context)...")
+            print(f"   📎 Context passed to risk/compliance (first 200 chars):\n   {context_task[:200]}...")
             parallel_start = datetime.now()
 
-            results = await asyncio.gather(
-                _call_agent(summary_agent, agent_task, summary_name),
-                _call_agent(risk_agent, agent_task, risk_name),
-                _call_agent(compliance_agent, agent_task, compliance_name),
+            risk_result, compliance_result = await asyncio.gather(
+                _call_agent(risk_agent, context_task, risk_name),
+                _call_agent(compliance_agent, context_task, compliance_name),
             )
 
             parallel_elapsed = (datetime.now() - parallel_start).total_seconds()
-            print(f"✅ [Parallel] All 3 agents done in {parallel_elapsed:.1f}s")
+            print(f"✅ [Phase 2] Risk + Compliance done in {parallel_elapsed:.1f}s")
 
-            # Emit completions and build agent_calls log
-            for r in results:
+            for r in [risk_result, compliance_result]:
                 print(f"   {r['agent']}: {r['elapsed']:.1f}s | {len(r['text'])} chars | {r['status']}")
                 agent_calls.append({
                     "workflow_run_id": workflow_run_id,
@@ -581,24 +603,20 @@ Use your grounding tools to search for and retrieve the content. Do NOT ask for 
                 })
                 yield {"type": "agent_complete", "agent": r["agent"], "status": "completed"}
 
-            # --- Phase 2: Orchestrator synthesis ---
+            # --- Phase 3: Orchestrator synthesis ---
             yield {"type": "agent_start", "agent": orchestrator_name, "status": "processing"}
-
-            summary_text = next(r["text"] for r in results if r["agent"] == summary_name)
-            risk_text = next(r["text"] for r in results if r["agent"] == risk_name)
-            compliance_text = next(r["text"] for r in results if r["agent"] == compliance_name)
 
             synthesis_prompt = f"""You are synthesizing the results of an RFP analysis performed by three specialist agents.
 Below are their outputs. Combine them into a single comprehensive report.
 
 ## Summary Agent Output
-{summary_text}
+{summary_result['text']}
 
 ## Risk Agent Output
-{risk_text}
+{risk_result['text']}
 
 ## Compliance Agent Output
-{compliance_text}
+{compliance_result['text']}
 
 ---
 INSTRUCTIONS:
@@ -609,18 +627,18 @@ INSTRUCTIONS:
 - Do NOT offer to help further. End with a polite closing.
 """
 
-            print(f"\n🎯 [Parallel] Orchestrator synthesizing...")
+            print(f"\n🎯 [Phase 3] Orchestrator synthesizing...")
             synth_start = datetime.now()
             synth_response = await orchestrator_agent.run(synthesis_prompt)
             synth_elapsed = (datetime.now() - synth_start).total_seconds()
             final_output = synth_response.text
-            print(f"✅ [Parallel] Synthesis done in {synth_elapsed:.1f}s | {len(final_output)} chars")
+            print(f"✅ [Phase 3] Synthesis done in {synth_elapsed:.1f}s | {len(final_output)} chars")
 
             yield {"type": "agent_complete", "agent": orchestrator_name, "status": "completed"}
 
             total_elapsed = (datetime.now() - wall_start).total_seconds()
             print(f"\n{'='*70}")
-            print(f"⏱️  Total wall time: {total_elapsed:.1f}s (parallel: {parallel_elapsed:.1f}s + synthesis: {synth_elapsed:.1f}s)")
+            print(f"⏱️  Total wall time: {total_elapsed:.1f}s (summary: {summary_elapsed:.1f}s + parallel: {parallel_elapsed:.1f}s + synthesis: {synth_elapsed:.1f}s)")
             print(f"{'='*70}")
 
             yield {
@@ -630,6 +648,7 @@ INSTRUCTIONS:
                 "final_output": final_output,
                 "agent_calls": agent_calls,
                 "timing": {
+                    "summary_phase": round(summary_elapsed, 1),
                     "parallel_phase": round(parallel_elapsed, 1),
                     "synthesis_phase": round(synth_elapsed, 1),
                     "total": round(total_elapsed, 1),
