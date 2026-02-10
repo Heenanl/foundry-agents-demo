@@ -6,6 +6,7 @@ function MagenticWorkflow() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [outputs, setOutputs] = useState([]);
+  const [mode, setMode] = useState('parallel'); // 'parallel' (fast) or 'magentic' (orchestrated)
   const [agentStatus, setAgentStatus] = useState({
     orchestrator: 'pending',
     summary: 'pending',
@@ -41,9 +42,10 @@ function MagenticWorkflow() {
 
     try {
       // Use EventSource for Server-Sent Events streaming
-      const eventSource = new EventSource(
-        `http://localhost:8000/api/magentic/analyze/stream?query=${encodeURIComponent(query)}`
-      );
+      const streamUrl = mode === 'parallel'
+        ? `http://localhost:8000/api/parallel/analyze/stream?query=${encodeURIComponent(query)}`
+        : `http://localhost:8000/api/magentic/analyze/stream?query=${encodeURIComponent(query)}`;
+      const eventSource = new EventSource(streamUrl);
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -165,6 +167,22 @@ function MagenticWorkflow() {
         <div className="upload-section">
           <div className="upload-box">
             <h3>RFP Analysis Query</h3>
+            <div className="mode-toggle">
+              <button
+                className={`mode-btn ${mode === 'parallel' ? 'active' : ''}`}
+                onClick={() => setMode('parallel')}
+                disabled={loading}
+              >
+                ⚡ Parallel (Fast)
+              </button>
+              <button
+                className={`mode-btn ${mode === 'magentic' ? 'active' : ''}`}
+                onClick={() => setMode('magentic')}
+                disabled={loading}
+              >
+                🎯 Magentic (Orchestrated)
+              </button>
+            </div>
             <textarea
               className="query-input"
               value={query}
@@ -173,7 +191,7 @@ function MagenticWorkflow() {
               rows="4"
             />
             <button className="start-button" onClick={startAnalysis} disabled={loading}>
-              {loading ? 'Analyzing...' : 'Start Magentic Analysis'}
+              {loading ? 'Analyzing...' : mode === 'parallel' ? '⚡ Start Parallel Analysis' : '🎯 Start Magentic Analysis'}
             </button>
           </div>
         </div>

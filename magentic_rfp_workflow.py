@@ -197,12 +197,22 @@ async def run_magentic_rfp_workflow(user_query: str, interactive: bool = False) 
 IMPORTANT: Each agent has access to AI Search indexes containing the RFP documents. 
 Do NOT ask for the document - use your grounding tools to search for and retrieve the content.
 
-Delegate to each team member ONCE to analyze:
-1. RfpSummaryAgent → search and summarize the RFP
-2. RfpRiskAgent → search and identify risks  
-3. RfpComplianceAgent → search and check compliance
+Delegate to each team member ONCE and only once:
+1. rfp-summary-agent → search and summarize the RFP
+2. rfp-risk-agent → search and identify risks  
+3. rfp-compliance-agent → search and check compliance
 
-Then synthesize all findings into a comprehensive final report.
+Once all three agents have responded, consider the request SATISFIED.
+Do NOT call any agent a second time.
+
+FINAL ANSWER: After all three agents respond, you MUST write a comprehensive synthesis that:
+- Starts with "## RFP Analysis — Executive Summary"
+- Combines key findings from all three agents into a unified narrative
+- Highlights the top 3 risks and top 3 compliance gaps
+- Ends with a clear recommendation (bid / no-bid / conditional bid)
+
+Do NOT ask the user for information or clarification until all agents have been consulted first.
+In your final answer, do NOT offer to help further. Provide the comprehensive analysis and end with a polite closing.
 """
         
         print("\n" + "="*70)
@@ -352,11 +362,21 @@ IMPORTANT: Each agent has access to AI Search indexes containing the RFP documen
 Do NOT ask for the document - use your grounding tools to search for and retrieve the content.
 
 Delegate to each team member ONCE to analyze:
-1. RfpSummaryAgent → search and summarize the RFP
-2. RfpRiskAgent → search and identify risks  
-3. RfpComplianceAgent → search and check compliance
+1. rfp-summary-agent → search and summarize the RFP
+2. rfp-risk-agent → search and identify risks  
+3. rfp-compliance-agent → search and check compliance
 
-Then synthesize all findings into a comprehensive final report.
+Once all three agents have responded, consider the request SATISFIED.
+Do NOT call any agent a second time.
+
+FINAL ANSWER: After all three agents respond, you MUST write a comprehensive synthesis that:
+- Starts with "## RFP Analysis — Executive Summary"
+- Combines key findings from all three agents into a unified narrative
+- Highlights the top 3 risks and top 3 compliance gaps
+- Ends with a clear recommendation (bid / no-bid / conditional bid)
+
+Do NOT ask the user for information or clarification until all agents have been consulted first.
+In your final answer, do NOT offer to help further. Provide the comprehensive analysis and end with a polite closing.
 """
             
             # Notify orchestrator started
@@ -380,6 +400,7 @@ Then synthesize all findings into a comprehensive final report.
                         "timestamp": datetime.now().isoformat(),
                     }
                     agent_calls.append(agent_call)
+                    print(f"\n📤 [Round {event.round_index}] → {event.participant_name}")
                     
                     # Notify agent started
                     yield {
@@ -389,9 +410,33 @@ Then synthesize all findings into a comprehensive final report.
                         "round": event.round_index
                     }
                 
+                # Orchestrator planning/progress event
+                elif isinstance(event, MagenticOrchestratorEvent):
+                    print(f"\n🎯 [Orchestrator] Event: {event.event_type.name}")
+                    if isinstance(event.data, ChatMessage):
+                        print(f"   Plan: {event.data.text[:500]}")
+                    elif isinstance(event.data, MagenticProgressLedger):
+                        ledger = event.data.to_dict()
+                        print(f"   Progress Ledger: {json.dumps(ledger, indent=2)}")
+                
+                # Skip token-level streaming output (too noisy)
+                elif isinstance(event, AgentRunUpdateEvent):
+                    pass
+                
                 # Final output
                 elif isinstance(event, WorkflowOutputEvent):
                     output_event = event
+                
+                # Framework lifecycle events — log concisely
+                else:
+                    event_name = type(event).__name__
+                    # Extract useful info from executor events
+                    if hasattr(event, 'executor_id'):
+                        print(f"   ⚙️ {event_name}: {event.executor_id}")
+                    elif hasattr(event, 'participant_name'):
+                        print(f"   ⚙️ {event_name}: {event.participant_name}")
+                    else:
+                        print(f"   ⚙️ {event_name}")
             
             # Mark all agents as completed
             for call in agent_calls:
@@ -405,8 +450,14 @@ Then synthesize all findings into a comprehensive final report.
             if output_event:
                 output_messages = cast(list[ChatMessage], output_event.data)
                 final_output = output_messages[-1].text if output_messages else "No output generated"
+                print(f"\n\n{'='*70}")
+                print(f"✅ Workflow Complete — {len(agent_calls)} agent calls")
+                print(f"📄 Final output length: {len(final_output)} chars")
+                print(f"   Preview: {final_output[:200]}...")
+                print(f"{'='*70}")
             else:
                 final_output = "No output generated"
+                print("\n⚠️  WARNING: No WorkflowOutputEvent received — synthesis may be missing")
             
             # Send final result
             yield {
@@ -424,11 +475,199 @@ Then synthesize all findings into a comprehensive final report.
         }
 
 
+# ============================================================================
+# PARALLEL WORKFLOW — Calls all 3 agents concurrently, then synthesizes
+# Expected: ~30s vs ~100s for Magentic sequential
+# ============================================================================
+
+async def _call_agent(agent, task: str, agent_name: str) -> dict:
+    """Call a single Foundry agent and return its response with timing."""
+    start = datetime.now()
+    try:
+        response = await agent.run(task)
+        elapsed = (datetime.now() - start).total_seconds()
+        return {
+            "agent": agent_name,
+            "text": response.text,
+            "elapsed": elapsed,
+            "status": "success",
+        }
+    except Exception as e:
+        elapsed = (datetime.now() - start).total_seconds()
+        return {
+            "agent": agent_name,
+            "text": f"Error: {str(e)}",
+            "elapsed": elapsed,
+            "status": "error",
+        }
+
+
+async def run_parallel_rfp_workflow_stream(user_query: str):
+    """
+    Hybrid RFP workflow — runs summary first, then passes context to
+    risk and compliance running in parallel, then orchestrator synthesizes.
+
+    Architecture:
+        Summary (~15s) → Risk + Compliance with context (parallel, ~15s) → Synthesis (~14s) ≈ ~44s
+    
+    Emits the same SSE event types as the Magentic workflow for frontend compatibility.
+    """
+    workflow_run_id = f"rfp-parallel-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    agent_calls: list[dict] = []
+    wall_start = datetime.now()
+
+    orchestrator_name = os.getenv("AZURE_AI_AGENT_ORCHESTRATOR", "rfp-orchestrator-agent")
+    summary_name = os.getenv("AZURE_AI_AGENT_SUMMARY", "rfp-summary-agent")
+    risk_name = os.getenv("AZURE_AI_AGENT_RISK", "rfp-risk-agent")
+    compliance_name = os.getenv("AZURE_AI_AGENT_COMPLIANCE", "rfp-compliance-agent")
+
+    try:
+        async with (
+            AzureCliCredential() as credential,
+            AIProjectClient(endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"), credential=credential) as project_client,
+        ):
+            openai_client = project_client.get_openai_client()
+            conversation = await openai_client.conversations.create()
+            conversation_id = conversation.id
+
+            yield {
+                "type": "start",
+                "workflow_run_id": workflow_run_id,
+                "conversation_id": conversation_id,
+                "query": user_query,
+                "mode": "parallel",
+            }
+
+            # Load all agents
+            provider = AzureAIProjectAgentProvider(project_client=project_client)
+            orchestrator_agent = await provider.get_agent(name=orchestrator_name, default_options={"conversation_id": conversation_id})
+            summary_agent = await provider.get_agent(name=summary_name, default_options={"conversation_id": conversation_id})
+            risk_agent = await provider.get_agent(name=risk_name, default_options={"conversation_id": conversation_id})
+            compliance_agent = await provider.get_agent(name=compliance_name, default_options={"conversation_id": conversation_id})
+
+            base_task = f"""{user_query}
+
+IMPORTANT: You have access to AI Search indexes containing the RFP documents.
+Use your grounding tools to search for and retrieve the content. Do NOT ask for documents."""
+
+            # --- Phase 1: Summary agent first ---
+            yield {"type": "agent_start", "agent": summary_name, "status": "processing"}
+
+            print(f"\n📋 [Phase 1] Running summary agent first...")
+            summary_start = datetime.now()
+            summary_result = await _call_agent(summary_agent, base_task, summary_name)
+            summary_elapsed = (datetime.now() - summary_start).total_seconds()
+
+            print(f"✅ [Phase 1] Summary done in {summary_result['elapsed']:.1f}s | {len(summary_result['text'])} chars")
+            agent_calls.append({
+                "workflow_run_id": workflow_run_id,
+                "conversation_id": conversation_id,
+                "agent": summary_result["agent"],
+                "elapsed": summary_result["elapsed"],
+                "timestamp": datetime.now().isoformat(),
+            })
+            yield {"type": "agent_complete", "agent": summary_name, "status": "completed"}
+
+            # --- Phase 2: Risk + Compliance in parallel, with summary context ---
+            context_task = f"""{base_task}
+
+Here is the executive summary from the Summary Agent for context:
+
+{summary_result['text']}
+
+Use the above summary as context, but also search the RFP documents directly for your own analysis."""
+
+            for name in [risk_name, compliance_name]:
+                yield {"type": "agent_start", "agent": name, "status": "processing"}
+
+            print(f"\n🚀 [Phase 2] Launching risk + compliance in parallel (with summary context)...")
+            print(f"   📎 Context passed to risk/compliance (first 200 chars):\n   {context_task[:200]}...")
+            parallel_start = datetime.now()
+
+            risk_result, compliance_result = await asyncio.gather(
+                _call_agent(risk_agent, context_task, risk_name),
+                _call_agent(compliance_agent, context_task, compliance_name),
+            )
+
+            parallel_elapsed = (datetime.now() - parallel_start).total_seconds()
+            print(f"✅ [Phase 2] Risk + Compliance done in {parallel_elapsed:.1f}s")
+
+            for r in [risk_result, compliance_result]:
+                print(f"   {r['agent']}: {r['elapsed']:.1f}s | {len(r['text'])} chars | {r['status']}")
+                agent_calls.append({
+                    "workflow_run_id": workflow_run_id,
+                    "conversation_id": conversation_id,
+                    "agent": r["agent"],
+                    "elapsed": r["elapsed"],
+                    "timestamp": datetime.now().isoformat(),
+                })
+                yield {"type": "agent_complete", "agent": r["agent"], "status": "completed"}
+
+            # --- Phase 3: Orchestrator synthesis ---
+            yield {"type": "agent_start", "agent": orchestrator_name, "status": "processing"}
+
+            synthesis_prompt = f"""You are synthesizing the results of an RFP analysis performed by three specialist agents.
+Below are their outputs. Combine them into a single comprehensive report.
+
+## Summary Agent Output
+{summary_result['text']}
+
+## Risk Agent Output
+{risk_result['text']}
+
+## Compliance Agent Output
+{compliance_result['text']}
+
+---
+INSTRUCTIONS:
+- Start with "## RFP Analysis — Executive Summary"
+- Combine key findings from all three agents into a unified narrative
+- Highlight the top 3 risks and top 3 compliance gaps
+- End with a clear recommendation (bid / no-bid / conditional bid)
+- Do NOT offer to help further. End with a polite closing.
+"""
+
+            print(f"\n🎯 [Phase 3] Orchestrator synthesizing...")
+            synth_start = datetime.now()
+            synth_response = await orchestrator_agent.run(synthesis_prompt)
+            synth_elapsed = (datetime.now() - synth_start).total_seconds()
+            final_output = synth_response.text
+            print(f"✅ [Phase 3] Synthesis done in {synth_elapsed:.1f}s | {len(final_output)} chars")
+
+            yield {"type": "agent_complete", "agent": orchestrator_name, "status": "completed"}
+
+            total_elapsed = (datetime.now() - wall_start).total_seconds()
+            print(f"\n{'='*70}")
+            print(f"⏱️  Total wall time: {total_elapsed:.1f}s (summary: {summary_elapsed:.1f}s + parallel: {parallel_elapsed:.1f}s + synthesis: {synth_elapsed:.1f}s)")
+            print(f"{'='*70}")
+
+            yield {
+                "type": "complete",
+                "workflow_run_id": workflow_run_id,
+                "conversation_id": conversation_id,
+                "final_output": final_output,
+                "agent_calls": agent_calls,
+                "timing": {
+                    "summary_phase": round(summary_elapsed, 1),
+                    "parallel_phase": round(parallel_elapsed, 1),
+                    "synthesis_phase": round(synth_elapsed, 1),
+                    "total": round(total_elapsed, 1),
+                },
+            }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        yield {"type": "error", "message": str(e)}
+
+
 async def main():
     """Main entry point."""
     print("\n🚀 Magentic RFP Analysis Workflow")
     print("="*70)
     print("Pattern: Orchestrator → [Summary, Risk, Compliance] → Final Output")
+    print("="*70)
+    print("Modes: --parallel (fast, ~30s) | default (Magentic, ~100s)")
     print("="*70)
     
     # Check configuration
@@ -461,10 +700,10 @@ async def main():
         print("\nTroubleshooting:")
         print("1. Run 'az login' to authenticate")
         print("2. Verify agents exist in Foundry with exact names:")
-        print("   - RfpOrchestratorAgent")
-        print("   - RfpSummaryAgent")
-        print("   - RfpRiskAgent")
-        print("   - RfpComplianceAgent")
+        print("   - rfp-orchestrator-agent")
+        print("   - rfp-summary-agent")
+        print("   - rfp-risk-agent")
+        print("   - rfp-compliance-agent")
         print("3. Check AZURE_AI_PROJECT_ENDPOINT in .env")
         import traceback
         traceback.print_exc()
