@@ -208,3 +208,17 @@ jobs:
           AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.compliance_agent_id }}
           DATA_PATH: data/rfp-compliance-evaluation.json
         run: python scripts/action.py
+
+  # Evaluate Orchestrator Agent (placeholder — runs after all 3 agent evals)
+  evaluate-orchestrator-agent:
+    needs: [evaluate-summary-agent, evaluate-risk-agent, evaluate-compliance-agent]
+    runs-on: ubuntu-latest
+    name: Evaluate Orchestrator Agent
+
+    steps:
+      - name: Evaluate Orchestrator Agent
+        run: |
+          echo "📊 Evaluate Orchestrator Agent"
+          echo "All 3 specialist agent evaluations passed."
+          echo "Orchestrator evaluation — placeholder (no-op)."
+          echo "✓ Evaluate Orchestrator Agent complete"
