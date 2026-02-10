@@ -42,9 +42,13 @@ jobs:
     name: Fetch Latest Agent Versions
     outputs:
       summary_agent_id: ${{ steps.get-versions.outputs.summary_agent_id }}
+      summary_prev_agent_id: ${{ steps.get-versions.outputs.summary_prev_agent_id }}
       risk_agent_id: ${{ steps.get-versions.outputs.risk_agent_id }}
+      risk_prev_agent_id: ${{ steps.get-versions.outputs.risk_prev_agent_id }}
       compliance_agent_id: ${{ steps.get-versions.outputs.compliance_agent_id }}
+      compliance_prev_agent_id: ${{ steps.get-versions.outputs.compliance_prev_agent_id }}
       orchestrator_agent_id: ${{ steps.get-versions.outputs.orchestrator_agent_id }}
+      orchestrator_prev_agent_id: ${{ steps.get-versions.outputs.orchestrator_prev_agent_id }}
 
     steps:
       - name: Azure Login
@@ -84,6 +88,7 @@ jobs:
           }
 
           agent_versions = {}
+          agent_prev_versions = {}
 
           if use_latest:
               credential = DefaultAzureCredential()
@@ -92,19 +97,32 @@ jobs:
               for key, name in agent_names.items():
                   try:
                       versions = list(client.agents.list_versions(agent_name=name))
-                      latest = max(versions, key=lambda v: int(v.version))
+                      sorted_versions = sorted(versions, key=lambda v: int(v.version), reverse=True)
+                      latest = sorted_versions[0]
                       agent_versions[key] = f"{name}:{latest.version}"
-                      print(f"{name}: {len(versions)} version(s), using latest v{latest.version}")
+                      print(f"{name}: {len(sorted_versions)} version(s), using latest v{latest.version}")
+
+                      # Get previous version for comparison runs
+                      if len(sorted_versions) >= 2:
+                          previous = sorted_versions[1]
+                          agent_prev_versions[key] = f"{name}:{previous.version}"
+                          print(f"  previous version: v{previous.version}")
+                      else:
+                          agent_prev_versions[key] = ""
+                          print(f"  no previous version available (only 1 version exists)")
                   except Exception as e:
                       agent_versions[key] = f"{name}:1"
+                      agent_prev_versions[key] = ""
                       print(f"{name}: failed ({e}), defaulting to v1")
           else:
               agent_versions = {k: f"{v}:1" for k, v in agent_names.items()}
+              agent_prev_versions = {k: "" for k in agent_names}
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               for key in ["summary", "risk", "compliance", "orchestrator"]:
                   f.write(f"{key}_agent_id={agent_versions[key]}\n")
-                  print(f"  {key}: {agent_versions[key]}")
+                  f.write(f"{key}_prev_agent_id={agent_prev_versions[key]}\n")
+                  print(f"  {key}: current={agent_versions[key]}, previous={agent_prev_versions[key] or 'N/A'}")
           EOF
 
   # Evaluate Summary Agent
@@ -133,11 +151,18 @@ jobs:
       - name: Install eval dependencies
         run: pip install -r scripts/requirements.txt
 
-      - name: Run Summary Agent Evaluation
+      - name: Run Summary Agent Evaluation (current vs previous)
         env:
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
           DEPLOYMENT_NAME: "gpt-4.1-mini"
-          AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.summary_agent_id }}
+          AGENT_IDS: >-
+            ${{ needs.fetch-agent-versions.outputs.summary_prev_agent_id != '' 
+              && format('{0},{1}', needs.fetch-agent-versions.outputs.summary_agent_id, needs.fetch-agent-versions.outputs.summary_prev_agent_id) 
+              || needs.fetch-agent-versions.outputs.summary_agent_id }}
+          BASELINE_AGENT_ID: >-
+            ${{ needs.fetch-agent-versions.outputs.summary_prev_agent_id != '' 
+              && needs.fetch-agent-versions.outputs.summary_prev_agent_id 
+              || '' }}
           DATA_PATH: data/rfp-summary-evaluation.json
         run: python scripts/action.py
 
@@ -167,11 +192,18 @@ jobs:
       - name: Install eval dependencies
         run: pip install -r scripts/requirements.txt
 
-      - name: Run Risk Agent Evaluation
+      - name: Run Risk Agent Evaluation (current vs previous)
         env:
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
           DEPLOYMENT_NAME: "gpt-4.1-mini"
-          AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.risk_agent_id }}
+          AGENT_IDS: >-
+            ${{ needs.fetch-agent-versions.outputs.risk_prev_agent_id != '' 
+              && format('{0},{1}', needs.fetch-agent-versions.outputs.risk_agent_id, needs.fetch-agent-versions.outputs.risk_prev_agent_id) 
+              || needs.fetch-agent-versions.outputs.risk_agent_id }}
+          BASELINE_AGENT_ID: >-
+            ${{ needs.fetch-agent-versions.outputs.risk_prev_agent_id != '' 
+              && needs.fetch-agent-versions.outputs.risk_prev_agent_id 
+              || '' }}
           DATA_PATH: data/rfp-risk-evaluation.json
         run: python scripts/action.py
 
@@ -201,11 +233,18 @@ jobs:
       - name: Install eval dependencies
         run: pip install -r scripts/requirements.txt
 
-      - name: Run Compliance Agent Evaluation
+      - name: Run Compliance Agent Evaluation (current vs previous)
         env:
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT }}
           DEPLOYMENT_NAME: "gpt-4.1-mini"
-          AGENT_IDS: ${{ needs.fetch-agent-versions.outputs.compliance_agent_id }}
+          AGENT_IDS: >-
+            ${{ needs.fetch-agent-versions.outputs.compliance_prev_agent_id != '' 
+              && format('{0},{1}', needs.fetch-agent-versions.outputs.compliance_agent_id, needs.fetch-agent-versions.outputs.compliance_prev_agent_id) 
+              || needs.fetch-agent-versions.outputs.compliance_agent_id }}
+          BASELINE_AGENT_ID: >-
+            ${{ needs.fetch-agent-versions.outputs.compliance_prev_agent_id != '' 
+              && needs.fetch-agent-versions.outputs.compliance_prev_agent_id 
+              || '' }}
           DATA_PATH: data/rfp-compliance-evaluation.json
         run: python scripts/action.py
 
