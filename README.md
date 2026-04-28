@@ -60,11 +60,3 @@ To test the Magentic workflow directly (without the UI):
 ```
 
 This will run the orchestrator agent with the default query. Edit the `main()` function in `magentic_rfp_workflow.py` to customize the query.
-
-## Testing Agent Code
-
-To test the agent session code:
-```powershell
-cd agent
-python agent_session.py
-```
