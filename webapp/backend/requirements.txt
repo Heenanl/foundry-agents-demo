@@ -4,5 +4,12 @@ uvicorn>=0.32.1
 pydantic>=2.0.0
 python-dotenv>=1.2.1
 azure-identity>=1.26.0b1
-azure-ai-projects>=2.0.0b2
+azure-ai-projects>=2.1.0
 openai>=1.99.0
+
+# Microsoft Agent Framework — pinned to versions verified against this codebase.
+# orchestrations is still pre-release; install with: pip install --pre -r requirements.txt
+agent-framework==1.2.1
+agent-framework-foundry==1.2.1
+agent-framework-azure-ai==1.0.0rc6
+agent-framework-orchestrations==1.0.0b260428

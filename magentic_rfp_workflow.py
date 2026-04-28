@@ -51,15 +51,18 @@ from typing import cast
 from dataclasses import dataclass, field
 
 from agent_framework import (
-    AgentRunUpdateEvent,
-    ChatMessage,
+    Agent,
+    AgentResponseUpdate,
+    Message,
+    WorkflowEvent,
+)
+from agent_framework.foundry import FoundryAgent, FoundryChatClient
+from agent_framework.orchestrations import (
     GroupChatRequestSentEvent,
     MagenticBuilder,
     MagenticOrchestratorEvent,
     MagenticProgressLedger,
-    WorkflowOutputEvent,
 )
-from agent_framework.azure import AzureAIProjectAgentProvider
 from azure.ai.projects.aio import AIProjectClient
 from azure.identity.aio import AzureCliCredential
 from dotenv import load_dotenv
@@ -73,7 +76,7 @@ class WorkflowResult:
     """Results from the Magentic workflow."""
     workflow_run_id: str
     final_output: str
-    conversation_messages: list[ChatMessage]
+    conversation_messages: list[Message]
     agent_calls: list[dict] = field(default_factory=list)
     
     def __str__(self):
@@ -121,9 +124,11 @@ async def run_magentic_rfp_workflow(user_query: str, interactive: bool = False) 
     risk_name = os.getenv("AZURE_AI_AGENT_RISK", "rfp-risk-agent")
     compliance_name = os.getenv("AZURE_AI_AGENT_COMPLIANCE", "rfp-compliance-agent")
     
+    project_endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
+
     async with (
         AzureCliCredential() as credential,
-        AIProjectClient(endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"), credential=credential) as project_client,
+        AIProjectClient(endpoint=project_endpoint, credential=credential) as project_client,
     ):
         # Create a shared conversation on the service for all agents
         # This ensures conversation_id is registered in Foundry portal
@@ -136,54 +141,67 @@ async def run_magentic_rfp_workflow(user_query: str, interactive: bool = False) 
         print(f"📝 Conversation ID: {conversation_id}")
         print("="*70)
         print("Loading Agents from Azure AI Foundry...")
-        
-        # Create provider using the same project client
-        provider = AzureAIProjectAgentProvider(project_client=project_client)
-        
-        # Get existing agents from Foundry with shared conversation_id
-        # This registers the conversation in the Foundry portal
-        orchestrator_agent = await provider.get_agent(
-            name=orchestrator_name,
-            default_options={"conversation_id": conversation_id}
-        )
-        print(f"✓ Orchestrator: {orchestrator_agent.name}")
-        
-        summary_agent = await provider.get_agent(
-            name=summary_name,
-            default_options={"conversation_id": conversation_id}
-        )
+
+        # Specialists are hosted Foundry agents (with their AI Search grounding,
+        # instructions, and model bound server-side).
+        model_deployment = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+
+        # Resolve latest version for each PromptAgent (FoundryAgent needs an
+        # explicit version to route requests through the agent's bound model).
+        async def _latest_version(name: str) -> str:
+            agent = await project_client.agents.get(agent_name=name)
+            latest = agent.versions["latest"] if "latest" in agent.versions else None
+            version = getattr(latest, "version", None) if latest is not None else None
+            if not isinstance(version, str):
+                raise RuntimeError(f"Could not resolve latest version for agent '{name}'")
+            return version
+
+        def _kwargs(version: str) -> dict:
+            return {
+                "project_endpoint": project_endpoint,
+                "credential": credential,
+                "agent_version": version,
+                "allow_preview": True,
+            }
+
+        summary_agent = FoundryAgent(agent_name=summary_name, **_kwargs(await _latest_version(summary_name)))
         print(f"✓ Summary Agent: {summary_agent.name}")
-        
-        risk_agent = await provider.get_agent(
-            name=risk_name,
-            default_options={"conversation_id": conversation_id}
-        )
+
+        risk_agent = FoundryAgent(agent_name=risk_name, **_kwargs(await _latest_version(risk_name)))
         print(f"✓ Risk Agent: {risk_agent.name}")
-        
-        compliance_agent = await provider.get_agent(
-            name=compliance_name,
-            default_options={"conversation_id": conversation_id}
-        )
+
+        compliance_agent = FoundryAgent(agent_name=compliance_name, **_kwargs(await _latest_version(compliance_name)))
         print(f"✓ Compliance Agent: {compliance_agent.name}")
-        
+
+        orchestrator_agent = Agent(
+            name=orchestrator_name,
+            description="Plans, delegates RFP analysis to specialists, and synthesizes results.",
+            instructions=(
+                "You are the orchestrator for an RFP analysis team. Plan the work, "
+                "delegate to the summary, risk, and compliance specialists once each, "
+                "then synthesize a final comprehensive report."
+            ),
+            client=FoundryChatClient(
+                project_client=project_client,
+                model=model_deployment,
+            ),
+        )
+        print(f"✓ Orchestrator: {orchestrator_agent.name} (model={model_deployment})")
+
         print("\n" + "="*70)
         print("🔧 Building Magentic Workflow...")
         print("="*70)
-        
+
         # Build the Magentic workflow
         # The orchestrator coordinates the specialists
         # Note: Agents already have system prompts and AI Search configured in Foundry
-        workflow = (
-            MagenticBuilder()
-            .participants([summary_agent, risk_agent, compliance_agent])
-            .with_manager(
-                agent=orchestrator_agent,
-                max_round_count=6,    # 1 per agent + synthesis + buffer
-                max_stall_count=3,    # Max stalls before forcing progress
-                max_reset_count=2,    # Max resets if workflow gets stuck
-            )
-            .build()
-        )
+        workflow = MagenticBuilder(
+            participants=[summary_agent, risk_agent, compliance_agent],
+            manager_agent=orchestrator_agent,
+            max_round_count=6,    # 1 per agent + synthesis + buffer
+            max_stall_count=3,    # Max stalls before forcing progress
+            max_reset_count=2,    # Max resets if workflow gets stuck
+        ).build()
         
         print("✓ Workflow built successfully")
         print(f"  - Orchestrator: {orchestrator_name}")
@@ -222,80 +240,81 @@ In your final answer, do NOT offer to help further. Provide the comprehensive an
         
         # Track state for streaming output
         last_message_id: str | None = None
-        output_event: WorkflowOutputEvent | None = None
+        final_output_messages: list[Message] | None = None
         current_round = 0
-        
+
         # Run the workflow with streaming
-        async for event in workflow.run_stream(task):
-            
-            # Agent is generating output (streaming tokens)
-            if isinstance(event, AgentRunUpdateEvent):
+        async for event in workflow.run(task, stream=True):
+
+            # Agent is generating output (streaming tokens) — emitted as
+            # WorkflowEvent(type="output", data=AgentResponseUpdate)
+            if event.type == "output" and isinstance(event.data, AgentResponseUpdate):
                 message_id = event.data.message_id
                 if message_id != last_message_id:
                     if last_message_id is not None:
                         print("\n")
                     print(f"\n📝 [{event.executor_id}]:", end=" ", flush=True)
                     last_message_id = message_id
-                print(event.data, end="", flush=True)
-            
+                if event.data.text:
+                    print(event.data.text, end="", flush=True)
+
             # Orchestrator planning/progress event
-            elif isinstance(event, MagenticOrchestratorEvent):
+            elif event.type == "magentic_orchestrator" and isinstance(event.data, MagenticOrchestratorEvent):
                 print(f"\n\n{'='*50}")
-                print(f"🎯 [Orchestrator Event] Type: {event.event_type.name}")
-                
-                if isinstance(event.data, ChatMessage):
-                    print(f"Plan:\n{event.data.text}")
-                elif isinstance(event.data, MagenticProgressLedger):
-                    print(f"Progress Ledger:\n{json.dumps(event.data.to_dict(), indent=2)}")
-                
+                print(f"🎯 [Orchestrator Event] Type: {event.data.event_type.name}")
+
+                if isinstance(event.data.content, Message):
+                    print(f"Plan:\n{event.data.content.text}")
+                elif isinstance(event.data.content, MagenticProgressLedger):
+                    print(f"Progress Ledger:\n{json.dumps(event.data.content.to_dict(), indent=2)}")
+
                 print("="*50)
-                
+
                 # Optionally pause for user review
                 if interactive:
                     await asyncio.get_event_loop().run_in_executor(
                         None, input, "Press Enter to continue..."
                     )
-            
+
             # Request sent to a participant agent - LOG with workflow_run_id and conversation_id
-            elif isinstance(event, GroupChatRequestSentEvent):
-                current_round = event.round_index
+            elif event.type == "group_chat" and isinstance(event.data, GroupChatRequestSentEvent):
+                current_round = event.data.round_index
                 agent_call = {
                     "workflow_run_id": workflow_run_id,
                     "conversation_id": conversation_id,
-                    "round": event.round_index,
-                    "agent": event.participant_name,
+                    "round": event.data.round_index,
+                    "agent": event.data.participant_name,
                     "timestamp": datetime.now().isoformat(),
                 }
                 agent_calls.append(agent_call)
-                print(f"\n\n📤 [Conv: {conversation_id[:20]}...] Round {event.round_index} → {event.participant_name}")
-            
-            # Final output
-            elif isinstance(event, WorkflowOutputEvent):
-                output_event = event
-        
+                print(f"\n\n📤 [Conv: {conversation_id[:20]}...] Round {event.data.round_index} → {event.data.participant_name}")
+
+            # Final output — list[Message] from the orchestrator
+            elif event.type == "output" and isinstance(event.data, list):
+                final_output_messages = cast(list[Message], event.data)
+
         # Process final output
-        if not output_event:
+        if not final_output_messages:
             raise RuntimeError("Workflow did not produce a final output event.")
-        
+
         print("\n\n" + "="*70)
         print(f"✅ Workflow Completed!")
         print(f"   Run ID: {workflow_run_id}")
         print(f"   Conversation ID: {conversation_id}")
         print("="*70)
-        
+
         # Log summary of agent calls
         print(f"\n📊 Agent Call Summary (Conversation: {conversation_id}):")
         for call in agent_calls:
             print(f"   Round {call['round']}: {call['agent']} @ {call['timestamp']}")
-        
+
         # Extract the final synthesized output
-        output_messages = cast(list[ChatMessage], output_event.data)
-        final_output = output_messages[-1].text if output_messages else "No output generated"
-        
+        final_output = final_output_messages[-1].text if final_output_messages else "No output generated"
+
         return WorkflowResult(
             workflow_run_id=workflow_run_id,
             final_output=final_output,
-            conversation_messages=output_messages,
+            conversation_messages=final_output_messages,
             agent_calls=agent_calls
         )
 
@@ -321,11 +340,12 @@ async def run_magentic_rfp_workflow_stream(user_query: str):
     summary_name = os.getenv("AZURE_AI_AGENT_SUMMARY", "rfp-summary-agent")
     risk_name = os.getenv("AZURE_AI_AGENT_RISK", "rfp-risk-agent")
     compliance_name = os.getenv("AZURE_AI_AGENT_COMPLIANCE", "rfp-compliance-agent")
+    project_endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
     
     try:
         async with (
             AzureCliCredential() as credential,
-            AIProjectClient(endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"), credential=credential) as project_client,
+            AIProjectClient(endpoint=project_endpoint, credential=credential) as project_client,
         ):
             # Create conversation
             openai_client = project_client.get_openai_client()
@@ -339,20 +359,52 @@ async def run_magentic_rfp_workflow_stream(user_query: str):
                 "query": user_query
             }
             
-            # Load agents
-            provider = AzureAIProjectAgentProvider(project_client=project_client)
-            orchestrator_agent = await provider.get_agent(name=orchestrator_name, default_options={"conversation_id": conversation_id})
-            summary_agent = await provider.get_agent(name=summary_name, default_options={"conversation_id": conversation_id})
-            risk_agent = await provider.get_agent(name=risk_name, default_options={"conversation_id": conversation_id})
-            compliance_agent = await provider.get_agent(name=compliance_name, default_options={"conversation_id": conversation_id})
-            
-            # Build workflow
-            workflow = (
-                MagenticBuilder()
-                .participants([summary_agent, risk_agent, compliance_agent])
-                .with_manager(agent=orchestrator_agent, max_round_count=6, max_stall_count=3, max_reset_count=2)
-                .build()
+            # Load agents — hosted Foundry agents for specialists,
+            # chat-client-backed Agent for the Magentic manager.
+            model_deployment = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+
+            async def _latest_version(name: str) -> str:
+                agent = await project_client.agents.get(agent_name=name)
+                latest = agent.versions["latest"] if "latest" in agent.versions else None
+                version = getattr(latest, "version", None) if latest is not None else None
+                if not isinstance(version, str):
+                    raise RuntimeError(f"Could not resolve latest version for agent '{name}'")
+                return version
+
+            def _kwargs(version: str) -> dict:
+                return {
+                    "project_endpoint": project_endpoint,
+                    "credential": credential,
+                    "agent_version": version,
+                    "allow_preview": True,
+                }
+
+            summary_agent = FoundryAgent(agent_name=summary_name, **_kwargs(await _latest_version(summary_name)))
+            risk_agent = FoundryAgent(agent_name=risk_name, **_kwargs(await _latest_version(risk_name)))
+            compliance_agent = FoundryAgent(agent_name=compliance_name, **_kwargs(await _latest_version(compliance_name)))
+
+            orchestrator_agent = Agent(
+                name=orchestrator_name,
+                description="Plans, delegates RFP analysis to specialists, and synthesizes results.",
+                instructions=(
+                    "You are the orchestrator for an RFP analysis team. Plan the work, "
+                    "delegate to the summary, risk, and compliance specialists once each, "
+                    "then synthesize a final comprehensive report."
+                ),
+                client=FoundryChatClient(
+                    project_client=project_client,
+                    model=model_deployment,
+                ),
             )
+
+            # Build workflow
+            workflow = MagenticBuilder(
+                participants=[summary_agent, risk_agent, compliance_agent],
+                manager_agent=orchestrator_agent,
+                max_round_count=6,
+                max_stall_count=3,
+                max_reset_count=2,
+            ).build()
             
             # Prepare the task with instructions (same as non-streaming workflow)
             task = f"""
@@ -387,57 +439,53 @@ In your final answer, do NOT offer to help further. Provide the comprehensive an
             }
             
             # Run workflow with streaming
-            output_event: WorkflowOutputEvent | None = None
-            async for event in workflow.run_stream(task):
-                
+            final_output_messages: list[Message] | None = None
+            async for event in workflow.run(task, stream=True):
+
                 # Request sent to participant agent
-                if isinstance(event, GroupChatRequestSentEvent):
+                if event.type == "group_chat" and isinstance(event.data, GroupChatRequestSentEvent):
                     agent_call = {
                         "workflow_run_id": workflow_run_id,
                         "conversation_id": conversation_id,
-                        "round": event.round_index,
-                        "agent": event.participant_name,
+                        "round": event.data.round_index,
+                        "agent": event.data.participant_name,
                         "timestamp": datetime.now().isoformat(),
                     }
                     agent_calls.append(agent_call)
-                    print(f"\n📤 [Round {event.round_index}] → {event.participant_name}")
-                    
+                    print(f"\n📤 [Round {event.data.round_index}] → {event.data.participant_name}")
+
                     # Notify agent started
                     yield {
                         "type": "agent_start",
-                        "agent": event.participant_name,
+                        "agent": event.data.participant_name,
                         "status": "processing",
-                        "round": event.round_index
+                        "round": event.data.round_index
                     }
-                
+
                 # Orchestrator planning/progress event
-                elif isinstance(event, MagenticOrchestratorEvent):
-                    print(f"\n🎯 [Orchestrator] Event: {event.event_type.name}")
-                    if isinstance(event.data, ChatMessage):
-                        print(f"   Plan: {event.data.text[:500]}")
-                    elif isinstance(event.data, MagenticProgressLedger):
-                        ledger = event.data.to_dict()
+                elif event.type == "magentic_orchestrator" and isinstance(event.data, MagenticOrchestratorEvent):
+                    print(f"\n🎯 [Orchestrator] Event: {event.data.event_type.name}")
+                    if isinstance(event.data.content, Message):
+                        print(f"   Plan: {event.data.content.text[:500]}")
+                    elif isinstance(event.data.content, MagenticProgressLedger):
+                        ledger = event.data.content.to_dict()
                         print(f"   Progress Ledger: {json.dumps(ledger, indent=2)}")
-                
-                # Skip token-level streaming output (too noisy)
-                elif isinstance(event, AgentRunUpdateEvent):
+
+                # Token-level streaming update (skipped — too noisy for SSE)
+                elif event.type == "output" and isinstance(event.data, AgentResponseUpdate):
                     pass
-                
-                # Final output
-                elif isinstance(event, WorkflowOutputEvent):
-                    output_event = event
-                
+
+                # Final output (list of Messages from orchestrator)
+                elif event.type == "output" and isinstance(event.data, list):
+                    final_output_messages = cast(list[Message], event.data)
+
                 # Framework lifecycle events — log concisely
                 else:
-                    event_name = type(event).__name__
-                    # Extract useful info from executor events
-                    if hasattr(event, 'executor_id'):
-                        print(f"   ⚙️ {event_name}: {event.executor_id}")
-                    elif hasattr(event, 'participant_name'):
-                        print(f"   ⚙️ {event_name}: {event.participant_name}")
+                    if getattr(event, "executor_id", None):
+                        print(f"   ⚙️ {event.type}: {event.executor_id}")
                     else:
-                        print(f"   ⚙️ {event_name}")
-            
+                        print(f"   ⚙️ {event.type}")
+
             # Mark all agents as completed
             for call in agent_calls:
                 yield {
@@ -445,11 +493,10 @@ In your final answer, do NOT offer to help further. Provide the comprehensive an
                     "agent": call["agent"],
                     "status": "completed"
                 }
-            
+
             # Extract final output
-            if output_event:
-                output_messages = cast(list[ChatMessage], output_event.data)
-                final_output = output_messages[-1].text if output_messages else "No output generated"
+            if final_output_messages:
+                final_output = final_output_messages[-1].text if final_output_messages else "No output generated"
                 print(f"\n\n{'='*70}")
                 print(f"✅ Workflow Complete — {len(agent_calls)} agent calls")
                 print(f"📄 Final output length: {len(final_output)} chars")
@@ -457,7 +504,7 @@ In your final answer, do NOT offer to help further. Provide the comprehensive an
                 print(f"{'='*70}")
             else:
                 final_output = "No output generated"
-                print("\n⚠️  WARNING: No WorkflowOutputEvent received — synthesis may be missing")
+                print("\n⚠️  WARNING: No final output received — synthesis may be missing")
             
             # Send final result
             yield {
@@ -521,10 +568,11 @@ async def run_parallel_rfp_workflow_stream(user_query: str):
     risk_name = os.getenv("AZURE_AI_AGENT_RISK", "rfp-risk-agent")
     compliance_name = os.getenv("AZURE_AI_AGENT_COMPLIANCE", "rfp-compliance-agent")
 
+    project_endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
     try:
         async with (
             AzureCliCredential() as credential,
-            AIProjectClient(endpoint=os.getenv("AZURE_AI_PROJECT_ENDPOINT"), credential=credential) as project_client,
+            AIProjectClient(endpoint=project_endpoint, credential=credential) as project_client,
         ):
             openai_client = project_client.get_openai_client()
             conversation = await openai_client.conversations.create()
@@ -538,12 +586,41 @@ async def run_parallel_rfp_workflow_stream(user_query: str):
                 "mode": "parallel",
             }
 
-            # Load all agents
-            provider = AzureAIProjectAgentProvider(project_client=project_client)
-            orchestrator_agent = await provider.get_agent(name=orchestrator_name, default_options={"conversation_id": conversation_id})
-            summary_agent = await provider.get_agent(name=summary_name, default_options={"conversation_id": conversation_id})
-            risk_agent = await provider.get_agent(name=risk_name, default_options={"conversation_id": conversation_id})
-            compliance_agent = await provider.get_agent(name=compliance_name, default_options={"conversation_id": conversation_id})
+            # Load all agents — hosted Foundry agents for specialists,
+            # chat-client-backed Agent for the synthesis orchestrator.
+            model_deployment = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4o")
+
+            async def _latest_version(name: str) -> str:
+                agent = await project_client.agents.get(agent_name=name)
+                latest = agent.versions["latest"] if "latest" in agent.versions else None
+                version = getattr(latest, "version", None) if latest is not None else None
+                if not isinstance(version, str):
+                    raise RuntimeError(f"Could not resolve latest version for agent '{name}'")
+                return version
+
+            def _kwargs(version: str) -> dict:
+                return {
+                    "project_endpoint": project_endpoint,
+                    "credential": credential,
+                    "agent_version": version,
+                    "allow_preview": True,
+                }
+
+            summary_agent = FoundryAgent(agent_name=summary_name, **_kwargs(await _latest_version(summary_name)))
+            risk_agent = FoundryAgent(agent_name=risk_name, **_kwargs(await _latest_version(risk_name)))
+            compliance_agent = FoundryAgent(agent_name=compliance_name, **_kwargs(await _latest_version(compliance_name)))
+
+            orchestrator_agent = Agent(
+                name=orchestrator_name,
+                description="Synthesizes RFP analysis from specialist agents.",
+                instructions=(
+                    "You synthesize RFP analyses from specialist agents into a single comprehensive report."
+                ),
+                client=FoundryChatClient(
+                    project_client=project_client,
+                    model=model_deployment,
+                ),
+            )
 
             base_task = f"""{user_query}
 
