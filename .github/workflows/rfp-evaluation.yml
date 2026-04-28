@@ -64,7 +64,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Azure SDK (preview - needed for list_versions/get_version)
-        run: pip install "azure-ai-projects>=2.0.0b1" --pre azure-identity
+        run: pip install "azure-ai-projects==2.0.0b3" --pre azure-identity
 
       - name: Get Latest Agent Versions
         id: get-versions
