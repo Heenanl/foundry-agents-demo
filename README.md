@@ -33,7 +33,7 @@ The orchestrator agent plans, delegates work to three specialists, and synthesiz
                   (RFP documents indexed here)
 ```
 
-All four agents are **Foundry-hosted** (created in the Azure AI Foundry portal). Each specialist uses Azure AI Search grounding to retrieve RFP content from indexed documents.
+All four agents are **Foundry-hosted**. Each specialist uses Azure AI Search grounding to retrieve RFP content from indexed documents.
 
 ---
 
